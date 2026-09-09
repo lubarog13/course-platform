@@ -1,0 +1,517 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// --- Enums ---
+
+enum Role {
+  student
+  teacher
+  admin
+}
+
+enum LessonType {
+  text
+  video
+  test
+}
+
+enum VideoPlatform {
+  rutube
+  youtube
+  self_hosted
+  other
+}
+
+enum QuestionType {
+  single_choice
+  multiple_choice
+  text
+}
+
+enum InstructorRole {
+  owner
+  co_teacher
+}
+
+enum EnrollmentStatus {
+  pending
+  enrolled
+  in_progress
+  completed
+  dropped
+  expired
+}
+
+enum CourseLevel {
+  beginner
+  intermediate
+  advanced
+}
+
+enum NotificationType {
+  deadline
+  test_result
+  new_message
+  lesson_comment
+  course_published
+}
+
+enum NotificationEntityType {
+  course
+  lesson
+  message
+  attempt
+}
+
+// --- Пользователи и файлы ---
+
+/// Один пользователь может быть преподавателем своих курсов и студентом чужих
+model User {
+  id               Int       @id @default(autoincrement())
+  email            String    @unique
+  /// Хранить только хеш, не пароль
+  passwordHash     String    @map("password_hash")
+  name             String
+  surname          String
+  patronymic       String?
+  /// Должность / достижения
+  userDetails      Json?     @map("user_details") @db.JsonB
+  phone            String?
+  /// Основная роль. Доступ к курсу — через UserCourse / CourseInstructor
+  role             Role      @default(student)
+  emailVerifiedAt  DateTime? @map("email_verified_at") @db.Timestamptz
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  /// Soft-delete; NULL = активен
+  deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+
+  uploadedFiles      File[]
+  instructedCourses  CourseInstructor[]
+  testAttempts       TestAttempt[]
+  enrollmentRequests UserEnrollmentRequest[]
+  enrollments        UserCourse[]
+  coursePartProgress UserCoursePart[]
+  lessonProgress     UserLesson[]
+  courseReviews      CourseReview[]
+  lessonComments     LessonComment[]
+  sentMessages       Message[]               @relation("SentMessages")
+  receivedMessages   Message[]               @relation("ReceivedMessages")
+  notifications      Notification[]
+
+  @@map("User")
+}
+
+model File {
+  id           Int      @id @default(autoincrement())
+  url          String
+  originalName String   @map("original_name")
+  mimeType     String   @map("mime_type")
+  sizeBytes    Int      @map("size_bytes")
+  uploadedBy   Int      @map("uploaded_by")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  uploader           User                @relation(fields: [uploadedBy], references: [id])
+  courseCovers       Course[]            @relation("CourseCover")
+  certificates       Certificate[]
+  messageAttachments MessageAttachment[]
+
+  @@map("File")
+}
+
+// --- Каталог ---
+
+model Category {
+  id   Int    @id @default(autoincrement())
+  name String
+  /// Уникальный идентификатор буквами для url
+  slug String @unique
+
+  courses Course[]
+
+  @@map("Category")
+}
+
+/// Курс. Делится на части, преподаётся одним или несколькими преподавателями
+model Course {
+  id              Int          @id @default(autoincrement())
+  name            String
+  /// Уникальный идентификатор буквами для url
+  slug            String       @unique
+  description     String?      @db.Text
+  language        String       @default("ru")
+  level           CourseLevel?
+  /// Нужно ли проходить регистрацию для курса
+  needEnrollment  Boolean      @default(false) @map("need_enrollment")
+  coverFileId     Int?         @map("cover_file_id")
+  categoryId      Int?         @map("category_id")
+  /// Кэш среднего из CourseReview
+  rating          Decimal?     @db.Decimal(3, 2)
+  ratingCount     Int          @default(0) @map("rating_count")
+  /// NULL = черновик
+  publishedAt     DateTime?    @map("published_at") @db.Timestamptz
+  createdAt       DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime?    @map("deleted_at") @db.Timestamptz
+  tags            String[]     @default([])
+  durationSeconds Int          @default(0) @map("duration_seconds")
+
+  coverFile          File?                   @relation("CourseCover", fields: [coverFileId], references: [id])
+  category           Category?               @relation(fields: [categoryId], references: [id])
+  instructors        CourseInstructor[]
+  parts              CoursePart[]
+  enrollmentRequests UserEnrollmentRequest[]
+  enrollments        UserCourse[]
+  reviews            CourseReview[]
+
+  @@map("Course")
+}
+
+/// Преподаватель курса. Может быть несколько на одном курсе
+model CourseInstructor {
+  id        Int            @id @default(autoincrement())
+  courseId  Int            @map("course_id")
+  userId    Int            @map("user_id")
+  role      InstructorRole @default(co_teacher)
+  createdAt DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id])
+
+  @@unique([courseId, userId])
+  @@map("CourseInstructor")
+}
+
+/// Часть (неделя) курса
+model CoursePart {
+  id          Int       @id @default(autoincrement())
+  courseId    Int       @map("course_id")
+  name        String
+  description String?   @db.Text
+  sortOrder   Int       @map("sort_order")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
+
+  course       Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lessons      Lesson[]
+  userProgress UserCoursePart[]
+
+  @@unique([courseId, sortOrder])
+  @@map("CoursePart")
+}
+
+model Video {
+  id               Int           @id @default(autoincrement())
+  url              String
+  platform         VideoPlatform
+  title            String?
+  /// ID ролика на YouTube/Rutube
+  externalId       String?       @map("external_id")
+  durationSeconds  Int?          @map("duration_seconds")
+  thumbnailUrl     String?       @map("thumbnail_url")
+
+  lessons Lesson[]
+
+  @@map("Video")
+}
+
+/// Урок может быть текстовым, видео или тестом
+model Lesson {
+  id                Int        @id @default(autoincrement())
+  coursePartId      Int        @map("course_part_id")
+  name              String
+  description       String?    @db.Text
+  sortOrder         Int        @map("sort_order")
+  type              LessonType
+  /// Обязательно при type = text
+  textContent       String?    @map("text_content") @db.Text
+  /// Обязательно при type = video
+  videoId           Int?       @map("video_id")
+  /// Количество баллов за урок
+  points            Int        @default(0)
+  /// Ожидаемая длительность урока
+  durationSeconds   Int?       @map("duration_seconds")
+  /// Лимит на тест; NULL = без лимита
+  timeLimitSeconds  Int?       @map("time_limit_seconds")
+  /// Проходной балл теста
+  passingScore      Int?       @map("passing_score")
+  /// Разрешено ли студенту просматривать ответы на тест
+  reviewEnabled     Boolean    @default(true) @map("review_enabled")
+  /// Нужно ли проверять тест вручную
+  manualGrading     Boolean    @default(false) @map("manual_grading")
+  /// NULL = без ограничения пересдач
+  maxAttempts       Int?       @map("max_attempts")
+  createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt         DateTime?  @map("deleted_at") @db.Timestamptz
+
+  coursePart   CoursePart      @relation(fields: [coursePartId], references: [id], onDelete: Cascade)
+  video        Video?          @relation(fields: [videoId], references: [id])
+  questions    TestQuestion[]
+  attempts     TestAttempt[]
+  userProgress UserLesson[]
+  comments     LessonComment[]
+
+  @@unique([coursePartId, sortOrder])
+  @@map("Lesson")
+}
+
+// --- Тесты ---
+
+/// Правильные ответы только в TestQuestionOption.isCorrect
+model TestQuestion {
+  id        Int          @id @default(autoincrement())
+  lessonId  Int          @map("lesson_id")
+  question  String       @db.Text
+  type      QuestionType
+  score     Int          @default(1)
+  sortOrder Int          @map("sort_order")
+
+  lesson  Lesson               @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  options TestQuestionOption[]
+  answers UserTestAnswer[]
+
+  @@unique([lessonId, sortOrder])
+  @@map("TestQuestion")
+}
+
+/// Для type=text вариантов нет. Студенту не отдавать isCorrect
+model TestQuestionOption {
+  id         Int     @id @default(autoincrement())
+  questionId Int     @map("question_id")
+  text       String
+  isCorrect  Boolean @default(false) @map("is_correct")
+  sortOrder  Int     @map("sort_order")
+
+  question   TestQuestion           @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  selectedIn UserTestAnswerOption[]
+
+  @@unique([questionId, sortOrder])
+  @@map("TestQuestionOption")
+}
+
+model TestAttempt {
+  id            Int       @id @default(autoincrement())
+  userId        Int       @map("user_id")
+  lessonId      Int       @map("lesson_id")
+  attemptNumber Int       @map("attempt_number")
+  startedAt     DateTime  @default(now()) @map("started_at") @db.Timestamptz
+  submittedAt   DateTime? @map("submitted_at") @db.Timestamptz
+  score         Int?
+  maxScore      Int?      @map("max_score")
+  passed        Boolean?
+
+  user    User             @relation(fields: [userId], references: [id])
+  lesson  Lesson           @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  answers UserTestAnswer[]
+
+  @@unique([userId, lessonId, attemptNumber])
+  @@map("TestAttempt")
+}
+
+model UserTestAnswer {
+  id          Int     @id @default(autoincrement())
+  attemptId   Int     @map("attempt_id")
+  questionId  Int     @map("question_id")
+  /// Для QuestionType.text
+  answerText  String? @map("answer_text") @db.Text
+  score       Int     @default(0)
+
+  attempt         TestAttempt            @relation(fields: [attemptId], references: [id], onDelete: Cascade)
+  question        TestQuestion           @relation(fields: [questionId], references: [id])
+  selectedOptions UserTestAnswerOption[]
+
+  @@unique([attemptId, questionId])
+  @@map("UserTestAnswer")
+}
+
+/// Выбранные варианты для single_choice и multiple_choice
+model UserTestAnswerOption {
+  id       Int @id @default(autoincrement())
+  answerId Int @map("answer_id")
+  optionId Int @map("option_id")
+
+  answer UserTestAnswer     @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  option TestQuestionOption @relation(fields: [optionId], references: [id])
+
+  @@unique([answerId, optionId])
+  @@map("UserTestAnswerOption")
+}
+
+// --- Прогресс и запись ---
+
+model UserEnrollmentRequest {
+  id        Int              @id @default(autoincrement())
+  userId    Int              @map("user_id")
+  courseId  Int              @map("course_id")
+  status    EnrollmentStatus @default(pending)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@map("UserEnrollmentRequest")
+}
+
+model UserCourse {
+  id             Int              @id @default(autoincrement())
+  userId         Int              @map("user_id")
+  courseId       Int              @map("course_id")
+  status         EnrollmentStatus @default(enrolled)
+  progress       Int              @default(0)
+  startDate      DateTime         @default(now()) @map("start_date") @db.Timestamptz
+  deadline       DateTime?        @db.Timestamptz
+  endDate        DateTime?        @map("end_date") @db.Timestamptz
+  lastAccessedAt DateTime?        @map("last_accessed_at") @db.Timestamptz
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+
+  user        User         @relation(fields: [userId], references: [id])
+  course      Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  certificate Certificate?
+
+  @@unique([userId, courseId])
+  @@map("UserCourse")
+}
+
+model UserCoursePart {
+  id             Int       @id @default(autoincrement())
+  userId         Int       @map("user_id")
+  coursePartId   Int       @map("course_part_id")
+  completed      Boolean   @default(false)
+  progress       Int       @default(0)
+  startDate      DateTime  @default(now()) @map("start_date") @db.Timestamptz
+  deadline       DateTime? @db.Timestamptz
+  endDate        DateTime? @map("end_date") @db.Timestamptz
+  lastAccessedAt DateTime? @map("last_accessed_at") @db.Timestamptz
+
+  user       User       @relation(fields: [userId], references: [id])
+  coursePart CoursePart @relation(fields: [coursePartId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, coursePartId])
+  @@map("UserCoursePart")
+}
+
+model UserLesson {
+  id                   Int       @id @default(autoincrement())
+  userId               Int       @map("user_id")
+  lessonId             Int       @map("lesson_id")
+  completed            Boolean   @default(false)
+  completedAt          DateTime? @map("completed_at") @db.Timestamptz
+  points               Int       @default(0)
+  timeSpentSeconds     Int       @default(0) @map("time_spent_seconds")
+  videoProgressSeconds Int       @default(0) @map("video_progress_seconds")
+  lastAccessedAt       DateTime? @map("last_accessed_at") @db.Timestamptz
+
+  user   User   @relation(fields: [userId], references: [id])
+  lesson Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@map("UserLesson")
+}
+
+/// Один отзыв на пару студент–курс. Course.rating пересчитывать триггером
+model CourseReview {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  courseId  Int      @map("course_id")
+  rating    Int
+  comment   String?  @db.Text
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  user   User   @relation(fields: [userId], references: [id])
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@map("CourseReview")
+}
+
+model Certificate {
+  id                 Int       @id @default(autoincrement())
+  userCourseId       Int       @unique @map("user_course_id")
+  number             String    @unique
+  verificationCode   String    @unique @map("verification_code")
+  fileId             Int?      @map("file_id")
+  issuedAt           DateTime  @default(now()) @map("issued_at") @db.Timestamptz
+  revokedAt          DateTime? @map("revoked_at") @db.Timestamptz
+
+  userCourse UserCourse @relation(fields: [userCourseId], references: [id], onDelete: Cascade)
+  file       File?      @relation(fields: [fileId], references: [id])
+
+  @@map("Certificate")
+}
+
+// --- Коммуникации ---
+
+model LessonComment {
+  id        Int       @id @default(autoincrement())
+  lessonId  Int       @map("lesson_id")
+  userId    Int       @map("user_id")
+  /// NULL = корневой комментарий
+  parentId  Int?      @map("parent_id")
+  content   String    @db.Text
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+
+  lesson  Lesson          @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  user    User            @relation(fields: [userId], references: [id])
+  parent  LessonComment?  @relation("CommentThread", fields: [parentId], references: [id])
+  replies LessonComment[] @relation("CommentThread")
+
+  @@map("LessonComment")
+}
+
+model Message {
+  id                  Int       @id @default(autoincrement())
+  senderId            Int       @map("sender_id")
+  receiverId          Int       @map("receiver_id")
+  content             String    @db.Text
+  sentAt              DateTime  @default(now()) @map("sent_at") @db.Timestamptz
+  read                Boolean   @default(false)
+  deletedBySenderAt   DateTime? @map("deleted_by_sender_at") @db.Timestamptz
+  deletedByReceiverAt DateTime? @map("deleted_by_receiver_at") @db.Timestamptz
+
+  sender      User                 @relation("SentMessages", fields: [senderId], references: [id])
+  receiver    User                 @relation("ReceivedMessages", fields: [receiverId], references: [id])
+  attachments MessageAttachment[]
+
+  @@map("Message")
+}
+
+model MessageAttachment {
+  id        Int @id @default(autoincrement())
+  messageId Int @map("message_id")
+  fileId    Int @map("file_id")
+
+  message Message @relation(fields: [messageId], references: [id], onDelete: Cascade)
+  file    File    @relation(fields: [fileId], references: [id])
+
+  @@unique([messageId, fileId])
+  @@map("MessageAttachment")
+}
+
+model Notification {
+  id         Int                     @id @default(autoincrement())
+  userId     Int                     @map("user_id")
+  type       NotificationType
+  title      String
+  body       String?                 @db.Text
+  entityType NotificationEntityType? @map("entity_type")
+  entityId   Int?                    @map("entity_id")
+  readAt     DateTime?               @map("read_at") @db.Timestamptz
+  createdAt  DateTime                @default(now()) @map("created_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("Notification")
+}

@@ -1,0 +1,541 @@
+// Платформа онлайн-курсов (LMS)
+// Docs: https://dbml.dbdiagram.io/docs
+
+// --- Enums ---
+
+Enum Role {
+  student
+  teacher
+  admin
+}
+
+Enum LessonType {
+  text
+  video
+  test
+}
+
+Enum VideoPlatform {
+  rutube
+  youtube
+  self_hosted
+  other
+}
+
+Enum QuestionType {
+  single_choice
+  multiple_choice
+  text
+}
+
+Enum InstructorRole {
+  owner
+  co_teacher
+}
+
+Enum EnrollmentStatus {
+  pending
+  enrolled
+  in_progress
+  completed
+  dropped
+  expired
+}
+
+Enum CourseLevel {
+  beginner
+  intermediate
+  advanced
+}
+
+Enum NotificationType {
+  deadline
+  test_result
+  new_message
+  lesson_comment
+  course_published
+}
+
+// --- Пользователи и файлы ---
+
+Table User {
+  id integer [pk, increment]
+  email varchar [not null, unique]
+  password_hash varchar [not null, note: 'Хранить только хеш, не пароль']
+  name varchar [not null]
+  surname varchar [not null]
+  patronymic varchar
+  user_details jsonb [note: 'Должность / достижения']
+  phone varchar
+  role Role [not null, default: 'student', note: 'Основная роль. Доступ к курсу — через UserCourse / CourseInstructor']
+  email_verified_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz [note: 'Soft-delete; NULL = активен']
+
+  checks {
+    `created_at <= updated_at` [name: 'user_timestamps']
+    `deleted_at IS NULL OR deleted_at >= created_at` [name: 'user_deleted_after_create']
+  }
+
+  Note: 'Один пользователь может быть преподавателем своих курсов и студентом чужих'
+}
+
+Table File {
+  id integer [pk, increment]
+  url varchar [not null]
+  original_name varchar [not null]
+  mime_type varchar [not null]
+  size_bytes integer [not null, check: `size_bytes >= 0`]
+  uploaded_by integer [not null, ref: > User.id]
+  created_at timestamptz [not null, default: `now()`]
+}
+
+// --- Каталог ---
+
+Table Category {
+  id integer [pk, increment]
+  name varchar [not null]
+  slug varchar [not null, unique, note: 'Уникальный идентификатор буквами для url']
+
+  checks {
+    `char_length(trim(name)) > 0` [name: 'category_name_not_blank']
+    `slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'` [name: 'category_slug_format']
+  }
+}
+
+Table Course {
+  id integer [pk, increment]
+  name varchar [not null]
+  slug varchar [not null, unique, note: 'Уникальный идентификатор буквами для url']
+  description text
+  language varchar [not null, default: 'ru']
+  level CourseLevel
+  need_enrollment boolean [not null, default: false, note: 'Нужно ли проходить регистрацию для курса'] 
+  cover_file_id integer [ref: > File.id]
+  category_id integer [ref: > Category.id]
+  rating numeric [note: 'Кэш среднего из CourseReview']
+  rating_count integer [not null, default: 0]
+  published_at timestamptz [note: 'NULL = черновик']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+  tags varchar[] [note: 'Теги курса']
+  duration_seconds integer [default: 0, note: 'Общая длительность курса в секундах']
+
+  checks {
+    `created_at <= updated_at` [name: 'course_timestamps']
+    `deleted_at IS NULL OR deleted_at >= created_at` [name: 'course_deleted_after_create']
+    `rating_count >= 0` [name: 'course_rating_count_non_negative']
+    `(rating IS NULL AND rating_count = 0) OR (rating >= 1 AND rating <= 5 AND rating_count > 0)` [name: 'course_rating_consistent']
+    `slug ~ '^[a-z0-9]+(-[a-z0-9]+)*$'` [name: 'course_slug_format']
+  }
+
+  Note: 'Курс. Делится на части, преподается одним или несколькими преподавателями для многих студентов.'
+}
+
+Table CourseInstructor {
+  id integer [pk, increment]
+  course_id integer [not null, ref: > Course.id]
+  user_id integer [not null, ref: > User.id]
+  role InstructorRole [not null, default: 'co_teacher']
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (course_id, user_id) [unique]
+  }
+
+  Note: 'Преподаватель курса. Может быть несколько преподавателей на одном курсе.'
+}
+
+Table CoursePart {
+  id integer [pk, increment]
+  course_id integer [not null, ref: > Course.id]
+  name varchar [not null]
+  description text
+  sort_order integer [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+
+  checks {
+    `sort_order >= 0` [name: 'course_part_sort_order']
+    `created_at <= updated_at` [name: 'course_part_timestamps']
+    `deleted_at IS NULL OR deleted_at >= created_at` [name: 'course_part_deleted_after_create']
+  }
+
+  indexes {
+    (course_id, sort_order) [unique]
+  }
+
+  Note: 'Часть (неделя) курса. Может быть несколько частей в курсе.'
+}
+
+Table Video {
+  id integer [pk, increment]
+  url varchar [not null]
+  platform VideoPlatform [not null]
+  title varchar
+  external_id varchar [note: 'ID ролика на YouTube/Rutube']
+  duration_seconds integer [check: `duration_seconds IS NULL OR duration_seconds > 0`]
+  thumbnail_url varchar
+}
+
+Table Lesson {
+  id integer [pk, increment]
+  course_part_id integer [not null, ref: > CoursePart.id]
+  name varchar [not null]
+  description text
+  sort_order integer [not null]
+  type LessonType [not null]
+  text_content text [note: 'Обязательно при type = text']
+  video_id integer [ref: > Video.id, note: 'Обязательно при type = video']
+  points integer [not null, default: 0, note: 'Количество баллов за урок']
+  duration_seconds integer [note: 'Ожидаемая длительность урока']
+  time_limit_seconds integer [note: 'Лимит на тест; NULL = без лимита']
+  passing_score integer [note: 'Проходной балл теста']
+  review_enabled boolean [not null, default: true, note: 'Разрешено ли студенту просматривать ответы на тест']
+  manual_grading boolean [not null, default: false, note: 'Нужно ли проверять тест вручную']
+  max_attempts integer [note: 'NULL = без ограничения пересдач']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+
+  checks {
+    `sort_order >= 0` [name: 'lesson_sort_order']
+    `points >= 0` [name: 'lesson_points_non_negative']
+    `duration_seconds IS NULL OR duration_seconds > 0` [name: 'lesson_duration_positive']
+    `time_limit_seconds IS NULL OR time_limit_seconds > 0` [name: 'lesson_time_limit_positive']
+    `passing_score IS NULL OR passing_score >= 0` [name: 'lesson_passing_score']
+    `max_attempts IS NULL OR max_attempts >= 1` [name: 'lesson_max_attempts']
+    `created_at <= updated_at` [name: 'lesson_timestamps']
+    `deleted_at IS NULL OR deleted_at >= created_at` [name: 'lesson_deleted_after_create']
+    `type <> 'text' OR text_content IS NOT NULL` [name: 'lesson_text_requires_content']
+    `type <> 'video' OR video_id IS NOT NULL` [name: 'lesson_video_requires_video']
+  }
+
+  indexes {
+    (course_part_id, sort_order) [unique]
+  }
+  Note: 'Урок может быть текстовым, видео или тестом'
+}
+
+// --- Тесты ---
+
+Table TestQuestion {
+  id integer [pk, increment]
+  lesson_id integer [not null, ref: > Lesson.id]
+  question text [not null]
+  type QuestionType [not null]
+  score integer [not null, default: 1]
+  sort_order integer [not null]
+
+  checks {
+    `score > 0` [name: 'question_score_positive']
+    `sort_order >= 0` [name: 'question_sort_order']
+  }
+
+  indexes {
+    (lesson_id, sort_order) [unique]
+  }
+
+  Note: 'Правильные ответы только в TestQuestionOption.is_correct, не в этой таблице'
+}
+
+Table TestQuestionOption {
+  id integer [pk, increment]
+  question_id integer [not null, ref: > TestQuestion.id]
+  text varchar [not null]
+  is_correct bool [not null, default: false]
+  sort_order integer [not null]
+
+  checks {
+    `sort_order >= 0` [name: 'option_sort_order']
+    `char_length(trim(text)) > 0` [name: 'option_text_not_blank']
+  }
+
+  indexes {
+    (question_id, sort_order) [unique]
+  }
+
+  Note: 'Для type=text вариантов нет. Студенту не отдавать is_correct'
+}
+
+Table TestAttempt {
+  id integer [pk, increment]
+  user_id integer [not null, ref: > User.id]
+  lesson_id integer [not null, ref: > Lesson.id]
+  attempt_number integer [not null]
+  started_at timestamptz [not null, default: `now()`]
+  submitted_at timestamptz
+  score integer
+  max_score integer
+  passed bool
+
+  checks {
+    `attempt_number >= 1` [name: 'attempt_number_positive']
+    `submitted_at IS NULL OR submitted_at >= started_at` [name: 'attempt_submit_after_start']
+    `score IS NULL OR score >= 0` [name: 'attempt_score_non_negative']
+    `max_score IS NULL OR max_score >= 0` [name: 'attempt_max_score_non_negative']
+    `score IS NULL OR max_score IS NULL OR score <= max_score` [name: 'attempt_score_not_above_max']
+    `passed IS NULL OR submitted_at IS NOT NULL` [name: 'attempt_passed_requires_submit']
+  }
+
+  indexes {
+    (user_id, lesson_id, attempt_number) [unique]
+  }
+}
+
+Table UserTestAnswer {
+  id integer [pk, increment]
+  attempt_id integer [not null, ref: > TestAttempt.id]
+  question_id integer [not null, ref: > TestQuestion.id]
+  answer_text text [note: 'Для QuestionType.text']
+  score integer [not null, default: 0, check: `score >= 0`]
+
+  indexes {
+    (attempt_id, question_id) [unique]
+  }
+}
+
+Table UserTestAnswerOption {
+  id integer [pk, increment]
+  answer_id integer [not null, ref: > UserTestAnswer.id]
+  option_id integer [not null, ref: > TestQuestionOption.id]
+
+  indexes {
+    (answer_id, option_id) [unique]
+  }
+
+  Note: 'Выбранные варианты для single_choice и multiple_choice'
+}
+
+// --- Прогресс и запись ---
+
+Table UserEnrollmentRequest {
+  id integer [pk, increment]
+  user_id integer [not null, ref: > User.id]
+  course_id integer [not null, ref: > Course.id]
+  status EnrollmentStatus [not null, default: 'pending']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  checks {
+    `created_at <= updated_at` [name: 'enrollment_request_timestamps']
+    `status IN ('pending', 'enrolled', 'dropped')` [name: 'enrollment_request_status']
+  }
+}
+
+Table UserCourse {
+  id integer [pk, increment]
+  user_id integer [not null, ref: > User.id]
+  course_id integer [not null, ref: > Course.id]
+  status EnrollmentStatus [not null, default: 'enrolled']
+  progress integer [not null, default: 0]
+  start_date timestamptz [not null, default: `now()`]
+  deadline timestamptz
+  end_date timestamptz
+  last_accessed_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  checks {
+    `progress BETWEEN 0 AND 100` [name: 'user_course_progress_range']
+    `created_at <= updated_at` [name: 'user_course_timestamps']
+    `end_date IS NULL OR end_date >= start_date` [name: 'user_course_end_after_start']
+    `deadline IS NULL OR deadline >= start_date` [name: 'user_course_deadline_after_start']
+    `status IN ('enrolled', 'in_progress', 'completed', 'dropped', 'expired')` [name: 'user_course_status']
+    `status <> 'completed' OR end_date IS NOT NULL` [name: 'user_course_completed_has_end']
+  }
+
+  indexes {
+    (user_id, course_id) [unique]
+  }
+}
+
+Table UserCoursePart {
+  id integer [pk, increment]
+  user_id integer [not null, ref: > User.id]
+  course_part_id integer [not null, ref: > CoursePart.id]
+  completed bool [not null, default: false]
+  progress integer [not null, default: 0]
+  start_date timestamptz [not null, default: `now()`]
+  deadline timestamptz
+  end_date timestamptz
+  last_accessed_at timestamptz
+
+  checks {
+    `progress BETWEEN 0 AND 100` [name: 'user_course_part_progress_range']
+    `end_date IS NULL OR end_date >= start_date` [name: 'user_course_part_end_after_start']
+    `deadline IS NULL OR deadline >= start_date` [name: 'user_course_part_deadline_after_start']
+  }
+
+  indexes {
+    (user_id, course_part_id) [unique]
+  }
+}
+
+Table UserLesson {
+  id integer [pk, increment]
+  user_id integer [not null, ref: > User.id]
+  lesson_id integer [not null, ref: > Lesson.id]
+  completed bool [not null, default: false]
+  completed_at timestamptz
+  points integer [not null, default: 0]
+  time_spent_seconds integer [not null, default: 0]
+  video_progress_seconds integer [not null, default: 0]
+  last_accessed_at timestamptz
+
+  checks {
+    `points >= 0` [name: 'user_lesson_points_non_negative']
+    `time_spent_seconds >= 0` [name: 'user_lesson_time_spent']
+    `video_progress_seconds >= 0` [name: 'user_lesson_video_progress']
+    `(completed AND completed_at IS NOT NULL) OR (NOT completed AND completed_at IS NULL)` [name: 'user_lesson_completed_at']
+  }
+
+  indexes {
+    (user_id, lesson_id) [unique]
+  }
+}
+
+Table CourseReview {
+  id integer [pk, increment]
+  user_id integer [not null, ref: > User.id]
+  course_id integer [not null, ref: > Course.id]
+  rating integer [not null]
+  comment text
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  checks {
+    `rating BETWEEN 1 AND 5` [name: 'course_review_rating_range']
+    `created_at <= updated_at` [name: 'course_review_timestamps']
+  }
+
+  indexes {
+    (user_id, course_id) [unique]
+  }
+
+  Note: 'Один отзыв на пару студент–курс. Course.rating пересчитывать триггером'
+}
+
+Table Certificate {
+  id integer [pk, increment]
+  user_course_id integer [not null, unique, ref: > UserCourse.id]
+  number varchar [not null, unique]
+  verification_code varchar [not null, unique]
+  file_id integer [ref: > File.id]
+  issued_at timestamptz [not null, default: `now()`]
+  revoked_at timestamptz
+
+  checks {
+    `revoked_at IS NULL OR revoked_at >= issued_at` [name: 'certificate_revoke_after_issue']
+  }
+}
+
+// --- Коммуникации ---
+
+Table LessonComment {
+  id integer [pk, increment]
+  lesson_id integer [not null, ref: > Lesson.id]
+  user_id integer [not null, ref: > User.id]
+  parent_id integer [ref: > LessonComment.id, note: 'NULL = корневой комментарий']
+  content text [not null]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+
+  checks {
+    `created_at <= updated_at` [name: 'lesson_comment_timestamps']
+    `parent_id IS NULL OR parent_id <> id` [name: 'lesson_comment_not_self_parent']
+    `deleted_at IS NULL OR deleted_at >= created_at` [name: 'lesson_comment_deleted_after_create']
+  }
+}
+
+Table Message {
+  id integer [pk, increment]
+  sender_id integer [not null, ref: > User.id]
+  receiver_id integer [not null, ref: > User.id]
+  content text [not null]
+  sent_at timestamptz [not null, default: `now()`]
+  read boolean [not null, default: false]
+  deleted_by_sender_at timestamptz
+  deleted_by_receiver_at timestamptz
+
+  checks {
+    `sender_id <> receiver_id` [name: 'message_not_to_self']
+    `deleted_by_sender_at IS NULL OR deleted_by_sender_at >= sent_at` [name: 'message_sender_delete_after_send']
+    `deleted_by_receiver_at IS NULL OR deleted_by_receiver_at >= sent_at` [name: 'message_receiver_delete_after_send']
+  }
+}
+
+Table MessageAttachment {
+  id integer [pk, increment]
+  message_id integer [not null, ref: > Message.id]
+  file_id integer [not null, ref: > File.id]
+
+  indexes {
+    (message_id, file_id) [unique]
+  }
+}
+
+Table Notification {
+  id integer [pk, increment]
+  user_id integer [not null, ref: > User.id]
+  type NotificationType [not null]
+  title varchar [not null]
+  body text
+  entity_type varchar [note: 'course | lesson | message | attempt']
+  entity_id integer [note: 'ID сущности']
+  read_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  checks {
+    `(entity_type IS NULL) = (entity_id IS NULL)` [name: 'notification_entity_pair']
+    `entity_type IS NULL OR entity_type IN ('course', 'lesson', 'message', 'attempt')` [name: 'notification_entity_type']
+  }
+
+  indexes {
+    (user_id, created_at)
+  }
+}
+
+// --- Группы на диаграмме ---
+
+TableGroup core {
+  User
+  File
+}
+
+TableGroup catalog {
+  Category
+  Course
+  CourseInstructor
+  CoursePart
+  Lesson
+  Video
+}
+
+TableGroup assessment {
+  TestQuestion
+  TestQuestionOption
+  TestAttempt
+  UserTestAnswer
+  UserTestAnswerOption
+}
+
+TableGroup progress {
+  UserEnrollmentRequest
+  UserCourse
+  UserCoursePart
+  UserLesson
+  CourseReview
+  Certificate
+}
+
+TableGroup communication {
+  LessonComment
+  Message
+  MessageAttachment
+  Notification
+}
