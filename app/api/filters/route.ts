@@ -19,7 +19,21 @@ try {
             }
         });
     });
-    return NextResponse.json(Object.entries(result).map(([tag, count]) => ({ tag, count })));
+    Object.keys(result).forEach((tag) => {
+        if (result[tag] < 2) {
+            delete result[tag];
+        }
+    });
+    const categories = await prisma.category.findMany({
+        select: {
+            name: true,
+            slug: true,
+        },
+    });
+    return NextResponse.json({
+        tags: Object.entries(result).map(([tag, count]) => ({ tag, count })),
+        categories: categories.map((item) => ({ name: item.name, slug: item.slug })),
+    });
   } catch (error) {
     return prismaErrorResponse(error);
   }

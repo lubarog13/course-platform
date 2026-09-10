@@ -30,14 +30,17 @@ export function CourseCard({ course, updateFilters }: { course: CourseDto, updat
         alt={course.coverFile?.originalName || 'Курс обложка'}
         className="relative z-20 aspect-video w-full object-cover "
       />
-      <CardHeader>
-        <CardAction>
+      <CardHeader className="flex flex-col gap-3">
+        <CardAction className="flex items-center flex-wrap gap-1">
+          {course.category?.slug && (
+            <Badge variant="outline" onClick={() => updateFilters({ category: course.category?.slug })}>{course.category?.name}</Badge>
+          )}
           <Badge variant="secondary" onClick={() => updateFilters({ level: course.level })}>{levelLabel}</Badge>
         </CardAction>
-        <CardTitle>{course.name}</CardTitle>
+        <CardTitle className="text-lg">{course.name}</CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col flex-1">
-        <p className=" text-sm">
+        <p className="text-zinc-500 dark:text-zinc-300 text-sm">
           <span className="underline mr-1">Преподаватель:</span>
           {course.instructors.length > 0
             ? course.instructors

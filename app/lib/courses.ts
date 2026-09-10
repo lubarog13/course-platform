@@ -147,7 +147,7 @@ export type CourseListQuery = {
   instructor?: string | null;
   tags?: string[] | null;
   search?: string | null;
-  ratingFrom?: string | null;
+  ratingFrom?: number | null;
   needEnrollment?: boolean | null;
 };
 
@@ -213,8 +213,8 @@ export function buildCourseListArgs(query: CourseListQuery) {
           ],
         }
       : {}),
-    ...(query.ratingFrom ? { rating: { gte: Number(query.ratingFrom) } } : {}),
-    ...(query.needEnrollment !== undefined ? { needEnrollment: query.needEnrollment } : {}),
+    ...(query.ratingFrom ? { rating: { gte: query.ratingFrom } } : {}),
+    ...(query.needEnrollment !== undefined && query.needEnrollment !== null ? { needEnrollment: query.needEnrollment } : {}),
   };
 
   return { where, limit, offset, page, sort, order };
