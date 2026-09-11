@@ -126,3 +126,8 @@
     @apply bg-background text-foreground;
   }
 }
+
+
+body {
+  position: relative;
+}

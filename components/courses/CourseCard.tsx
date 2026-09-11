@@ -69,7 +69,7 @@ export function CourseCard({ course, updateFilters }: { course: CourseDto, updat
         </div>
       </CardContent>
       <CardFooter className="gap-3">
-        <Button className="flex-1" onClick={() => router.push(`/courses/${course.slug}`)}>Посмотреть курс</Button>
+        <Button className="flex-1" onClick={() => router.push(`/course/${course.slug}`)}>Посмотреть курс</Button>
         <div className="flex items-center gap-2">
           {course.rating && course.rating > 0 ? <Star className="w-4 h-4 text-yellow-500" /> : course.rating && course.rating > 4 ? <StarHalf className="w-4 h-4 text-yellow-500" /> : <StarOff className="w-4 h-4 text-zinc-500" />}
           <p className={`text-sm ${course.rating && course.rating > 0 ? 'text-yellow-500' : 'text-zinc-500'}`}>{course.rating || 0}</p>

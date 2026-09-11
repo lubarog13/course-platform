@@ -1,4 +1,4 @@
-import { ThemeProvider as NextThemesProvider } from "next-themes";
+import { ThemeProvider } from "@/components/providers/theme-provider"
 import { ReCaptchaProvider } from "next-recaptcha-v3";
 
 
@@ -8,15 +8,15 @@ export function Providers({
     children: React.ReactNode;
   }) {
     return (
-          <NextThemesProvider
-            attribute="class"
-            defaultTheme="system"
-            enableSystem
-            disableTransitionOnChange
+          <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
           >
             <ReCaptchaProvider useEnterprise>
               {children}
             </ReCaptchaProvider>
-          </NextThemesProvider>
+          </ThemeProvider>
     );
   }

@@ -238,7 +238,7 @@ if (loading && !data) {
     {filtersBlock()}
     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
       {Array.from({ length: 9 }, (_, index) => (
-        <Card key={index} className="w-full max-w-xs">
+        <Card key={index} className="w-full max-w-sm mx-auto">
     <CardContent>
       <Skeleton className="aspect-video w-full" />
       <Skeleton className="h-20 mt-2" />

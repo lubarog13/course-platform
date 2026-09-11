@@ -5,6 +5,7 @@ import {
   type Category,
   type CourseInstructor,
   type User,
+  CoursePart,
 } from "@prisma/client";
 import { NextResponse } from "next/server";
 
@@ -75,12 +76,18 @@ export const courseInclude = {
   },
 } satisfies Prisma.CourseInclude;
 
+export const courseSingleInclude = {
+  ...courseInclude,
+  parts: true,
+} satisfies Prisma.CourseInclude;
+
 export type CourseRecord = Course & {
   coverFile: File | null;
   category: Category | null;
   instructors: (CourseInstructor & {
     user: Omit<User, "passwordHash">;
   })[];
+  parts?: CoursePart[] | null;
 };
 
 function serializeInstructor(
@@ -119,6 +126,7 @@ export function serializeCourse(course: CourseRecord) {
     ...course,
     rating: course.rating === null ? null : Number(course.rating),
     instructors: course.instructors.map(serializeInstructor),
+    parts: course.parts ?? [],
   };
 }
 
@@ -370,7 +378,7 @@ export function parseCourseBody(body: unknown, mode: "create" | "update"): Cours
 export async function findCourse(id: string) {
   return prisma.course.findFirst({
     where: parseIdParam(id),
-    include: courseInclude,
+    include: courseSingleInclude,
   });
 }
 
