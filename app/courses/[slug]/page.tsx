@@ -1,5 +1,6 @@
 import { CourseGrid } from "@/components/courses/CourseGrid";
 import { prisma } from "@/app/lib/prisma";
+import NotFound from "@/components/layout/not-found";
 
 export default async function CourseCategoryPage({
   params,
@@ -14,7 +15,7 @@ export default async function CourseCategoryPage({
   if (!category) {
     return (
       <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
-        <h1 className="mb-6 text-2xl font-semibold tracking-tight">Категория не найдена</h1>
+        <NotFound text="Категория не найдена" />
       </main>
     );
   }

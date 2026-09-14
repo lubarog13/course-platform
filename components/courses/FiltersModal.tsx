@@ -126,6 +126,13 @@ export default function FiltersModal({
   };
 
   const handleCategoryClick = (slug: string) => {
+    if (slug === filters.category) {
+      setFilters({
+        ...filters,
+        category: undefined,
+      });
+      return;
+    }
     setFilters({
       ...filters,
       category: slug,
@@ -133,7 +140,6 @@ export default function FiltersModal({
   };
 
   const handleEnrollModeChange = (needEnrollment: boolean) => {
-    console.log(needEnrollment);
     setFilters({
       ...filters,
       needEnrollment: needEnrollment ? undefined : false,
@@ -144,6 +150,21 @@ export default function FiltersModal({
     setFilters({
       ...filters,
       level: level,
+    });
+  };
+
+  const resetFilters = () => {
+
+    setFilters({
+      ...filters,
+      tags: undefined,
+      ratingFrom: undefined,
+      level: undefined,
+      category: undefined,
+      needEnrollment: undefined,
+      search: undefined,
+      sort: undefined,
+      order: undefined,
     });
   };
 
@@ -204,16 +225,16 @@ export default function FiltersModal({
             <div className="text-lg font-medium mt-2">Уровень подготовки</div>
             <div className="flex flex-wrap gap-2">
               <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleLevelClick(null)}>
-                <div className={filters.level === null ? "text-sm text-white underline" : "text-sm text-muted-foreground"}>Любой</div>
+                <div className={filters.level === null ? "text-sm text-dark-foreground dark:text-white underline" : "text-sm text-muted-foreground"}>Любой</div>
               </div>
               <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleLevelClick("beginner")}>
-                <div className={filters.level === "beginner" ? "text-sm text-white underline" : "text-sm text-muted-foreground"}>Начальный</div>
+                <div className={filters.level === "beginner" ? "text-sm text-dark-foreground dark:text-white underline" : "text-sm text-muted-foreground"}>Начальный</div>
               </div>
               <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleLevelClick("intermediate")}>
-                <div className={filters.level === "intermediate" ? "text-sm text-white underline" : "text-sm text-muted-foreground"}>Средний</div>
+                <div className={filters.level === "intermediate" ? "text-sm text-dark-foreground dark:text-white underline" : "text-sm text-muted-foreground"}>Средний</div>
               </div>
               <div className="flex items-center gap-1 cursor-pointer" onClick={() => handleLevelClick("advanced")}>
-                <div className={filters.level === "advanced" ? "text-sm text-white underline" : "text-sm text-muted-foreground"}>Профессиональный</div>
+                <div className={filters.level === "advanced" ? "text-sm text-dark-foreground dark:text-white underline" : "text-sm text-muted-foreground"}>Профессиональный</div>
               </div>
             </div>
             </div>
@@ -221,7 +242,7 @@ export default function FiltersModal({
             <div className="text-lg font-medium">Категории</div>
             <div className="flex flex-wrap gap-2">
               {categories.map((item) => (
-                <Badge key={item.slug} variant="secondary" className="cursor-pointer text-xs capitalize" onClick={() => handleCategoryClick(item.slug)}>
+                <Badge key={item.slug} variant="secondary" className={`cursor-pointer text-xs capitalize ${filters.category === item.slug ? "bg-primary text-primary-foreground" : ""}`} onClick={() => handleCategoryClick(item.slug)}>
                   {item.name}
                 </Badge>
               ))}
@@ -233,7 +254,7 @@ export default function FiltersModal({
             </div>
         </div>
         <DialogFooter className="mt-auto">
-          <Button variant="outline" onClick={() => setFilters({})}>Сбросить</Button>
+          <DialogClose render={<Button variant="outline" onClick={resetFilters}>Сбросить</Button>} />
           <DialogClose render={<Button variant="default">Показать</Button>} />
         </DialogFooter>
       </DialogContent>

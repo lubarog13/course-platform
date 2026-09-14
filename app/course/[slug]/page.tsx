@@ -1,11 +1,12 @@
 import { findCourse, serializeCourse } from "@/app/lib/courses";
 import { CoursePreview } from "@/components/courses/CoursePreview";
+import NotFound from "@/components/layout/not-found";
 
 export default async function CoursePage({ params }: { params: Promise<{ slug: string }> }) {
     const slug = (await params).slug;
   const course = await findCourse(slug);
     if (!course) {
-        return <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">Курс не найден</div>;
+        return <NotFound text="Курс не найден" />;
     }
     return <>
     <div className="container mx-auto max-w-6xl px-4 pt-8 ">

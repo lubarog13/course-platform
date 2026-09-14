@@ -54,7 +54,8 @@ export function CourseGrid({ forceRefresh = false, category = undefined }: {forc
   }, []);
 
   const [filters, setFilters] = useState<CourseListQuery>({});
-  const updateFilters = (currentFilters: CourseListQuery) => {
+  const updateFilters = (refresh = false, currentFilters: CourseListQuery) => {
+
     setFilters((prevFilters) => ({
         ...prevFilters,
         ...currentFilters,
@@ -64,8 +65,10 @@ export function CourseGrid({ forceRefresh = false, category = undefined }: {forc
       delete resultFilters.tag;
     }
     const localQueryParams = Object.fromEntries(Object.entries(resultFilters).filter(([key, value]) => value !== null && value !== undefined)) as Record<string, string>;
+    console.log("updateFilters", localQueryParams);
+    if (forceRefresh && !refresh) return;
     router.replace(`/courses${category ? `/${category}` : ''}?${new URLSearchParams(localQueryParams).toString()}`);
-    if (forceRefresh) {
+    if (refresh) {
       router.refresh();
     }
   };
@@ -157,7 +160,9 @@ export function CourseGrid({ forceRefresh = false, category = undefined }: {forc
 
 
   useEffect(() => {
-    loadFromQueryParams();
+    if (!forceRefresh) {
+      loadFromQueryParams();
+    }
   }, [forceRefresh]);
 
   useEffect(() => {
@@ -167,9 +172,9 @@ export function CourseGrid({ forceRefresh = false, category = undefined }: {forc
   const updateFiltersFromCard = (localFilters: {tag?: string} & CourseListQuery) => {
     setPage(1);
     if (localFilters.tag) {
-      updateFilters({ ...localFilters, tags: [...(filters.tags || []), localFilters.tag] });
+      updateFilters(forceRefresh, { ...localFilters, tags: [...(filters.tags || []), localFilters.tag] });
     } else {
-      updateFilters(localFilters);
+      updateFilters(forceRefresh, localFilters);
     }
   };
 
@@ -211,10 +216,10 @@ export function CourseGrid({ forceRefresh = false, category = undefined }: {forc
   const filtersBlock = () => {
     return (
       <div className="flex align-center gap-3 mb-5">
-        <FiltersModal filters={filters} setFilters={updateFilters} >
+        <FiltersModal filters={filters} setFilters={(filters) => updateFilters(forceRefresh, filters)} >
           {mobile ? searchMobile() : null}
         </FiltersModal>
-        <SearchField placeholder="Поиск по курсам" results={data?.total ?? 0} emitOnInput={true} onSearch={(value) => updateFilters({ search: value })} />
+        <SearchField placeholder="Поиск по курсам" results={data?.total ?? 0} emitOnInput={true} onSearch={(value) => updateFilters(false, { search: value })} />
         <DropdownMenu>
           <DropdownMenuTrigger render={<Button variant="outline">
             {filters.order === "desc" ? <ListSortDescending /> : <ListSortAscending />}
@@ -222,7 +227,7 @@ export function CourseGrid({ forceRefresh = false, category = undefined }: {forc
           <DropdownMenuContent className="w-[fit-content]">
             {sortOptions.map(option => (
               order.map(order => (
-                <DropdownMenuItem className="block" key={option.value + order.value} onClick={() => updateFilters({ sort: option.value, order: order.value })}>{option.label}
+                <DropdownMenuItem className="block" key={option.value + order.value} onClick={() => updateFilters(false, { sort: option.value, order: order.value })}>{option.label}
                 <DropdownMenuShortcut> ({order.label})</DropdownMenuShortcut>
             </DropdownMenuItem>
           ))
@@ -276,7 +281,7 @@ if (loading && !data) {
 
   return (
     <>
-    {filtersBlock()}
+    {forceRefresh ? null : filtersBlock()}
     <div className="flex flex-col gap-6">
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">

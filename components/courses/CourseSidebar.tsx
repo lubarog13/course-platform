@@ -2,12 +2,47 @@
 import { CoursePartDto } from "@/app/lib/courseParts";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { ChevronDown } from "lucide-react";
-import { useState } from "react";
-
-export default function CourseSidebar({courseParts, courseName}: {courseParts: CoursePartDto[], courseName: string}) {
+import { useEffect, useState } from "react";
+import { LessonDto } from "@/app/lib/courseParts";
+import {
+    Item,
+    ItemContent,
+    ItemDescription,
+    ItemMedia,
+    ItemTitle,
+  } from "@/components/ui/item";
+import { BookOpenText, SquarePlay, PenLine, CircleDashedCheck } from "lucide-react";
+export default function CourseSidebar({courseParts, courseName, openedLessonId, onLessonClick}: {courseParts: CoursePartDto[], courseName: string, openedLessonId: number | null, onLessonClick: (lessonId: number) => void}) {
     const [openedIndex, setOpenedIndex] = useState<number | null>(null);
+    const openLessonChange = () => {
+        setOpenedIndex(courseParts.findIndex((coursePart) => coursePart.lessons.some((lesson) => lesson.id === openedLessonId)));
+    }
+    useEffect(() => {
+        console.log(openedLessonId);
+        setTimeout(() => {
+            openLessonChange();
+        }, 0);
+    }, [openedLessonId, courseParts]);
+    const lessonIcon = (lesson: LessonDto) => {
+        if (lesson.type === "video") {
+            return <SquarePlay className="w-4 h-4" />;
+        }
+        if (lesson.type === "text") {
+            return <BookOpenText className="w-4 h-4" />;
+        }
+        return <PenLine className="w-4 h-4" />;
+    };
+    const lessonDuration = (lesson: LessonDto) => {
+        const hours = Math.floor((lesson.durationSeconds ?? 0) / 3600);
+        const minutes = Math.floor(((lesson.durationSeconds ?? 0) % 3600) / 60);
+        const seconds = (lesson.durationSeconds ?? 0) % 60;
+        if (hours > 0) {
+            return `${hours.toString().padStart(2, "0")}:${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+        }
+        return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
+    };
     return (
-        <div className="md:border-r border-gray-200 p-4 pr-6 flex flex-col w-full md:w-1/3 lg:w-1/4 min-w-[300px]">
+        <div className="lg:border-r border-gray-200 p-4 pr-6 flex flex-col w-full lg:w-1/4 min-w-[300px]">
             <h1 className="mb-6 text-2xl font-bold">{courseName}</h1>
             <div className="flex flex-col gap-2">
                 {courseParts.map((coursePart, index) => (
@@ -19,9 +54,22 @@ export default function CourseSidebar({courseParts, courseName}: {courseParts: C
                             <CollapsibleContent>
                                 <div className="flex flex-col gap-2 mt-4">
                                     {coursePart.lessons.map((lesson) => (
-                                        <div key={lesson.id}>
-                                            <h3 className="text-md text-left text-gray-600 dark:text-gray-400 cursor-pointer hover:text-blue-600 dark:hover:text-blue-400">{lesson.name}</h3>
-                                        </div>
+                                        <Item className="cursor-pointer items-start" key={lesson.id} onClick={() => onLessonClick(lesson.id)}>
+                                            <ItemMedia variant="icon">
+                                                {lessonIcon(lesson)}
+                                            </ItemMedia>
+                                            <ItemContent>
+                                                <ItemTitle className={lesson.id === openedLessonId ? 'font-bold' : ''}>{lesson.name}</ItemTitle>
+                                                <ItemDescription>{lesson.description}</ItemDescription>
+                                            </ItemContent>
+                                            <ItemContent>
+                                                <ItemDescription>{lessonDuration(lesson)}</ItemDescription>
+                                                <ItemDescription>
+                                                    <span className="flex items-center gap-2"><CircleDashedCheck className="w-4 h-4" />
+                                                    {lesson.points ?? 0}</span>
+                                                </ItemDescription>
+                                            </ItemContent>
+                                        </Item>
                                     ))}
                                 </div>
                             </CollapsibleContent>

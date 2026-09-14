@@ -1,4 +1,8 @@
-import { LessonType, PrismaClient } from "@prisma/client";
+import {
+  LessonType,
+  PrismaClient,
+  type QuestionType,
+} from "@prisma/client";
 
 const prisma = new PrismaClient();
 
@@ -128,6 +132,20 @@ const courses = [
   },
 ];
 
+type QuestionOptionSeed = {
+  text: string;
+  isCorrect?: boolean;
+  sortOrder: number;
+};
+
+type QuestionSeed = {
+  question: string;
+  type: QuestionType;
+  score: number;
+  sortOrder: number;
+  options?: QuestionOptionSeed[];
+};
+
 type LessonSeed = {
   name: string;
   description?: string;
@@ -136,8 +154,11 @@ type LessonSeed = {
   textContent?: string;
   points?: number;
   durationSeconds?: number;
+  timeLimitSeconds?: number;
   passingScore?: number;
+  maxAttempts?: number;
   videoTitle?: string;
+  questions?: QuestionSeed[];
 };
 
 type PartSeed = {
@@ -213,6 +234,86 @@ const rimlyanamParts: PartSeed[] = [
         points: 10,
         passingScore: 7,
         durationSeconds: 15 * 60,
+        timeLimitSeconds: 15 * 60,
+        maxAttempts: 3,
+        questions: [
+          {
+            sortOrder: 1,
+            type: "single_choice",
+            score: 2,
+            question: "Кто является автором Послания к Римлянам?",
+            options: [
+              { sortOrder: 1, text: "Апостол Пётр", isCorrect: false },
+              { sortOrder: 2, text: "Апостол Павел", isCorrect: true },
+              { sortOrder: 3, text: "Евангелист Лука", isCorrect: false },
+              { sortOrder: 4, text: "Апостол Иоанн", isCorrect: false },
+            ],
+          },
+          {
+            sortOrder: 2,
+            type: "single_choice",
+            score: 2,
+            question: "Где, по наиболее распространённой датировке, Павел написал это послание?",
+            options: [
+              { sortOrder: 1, text: "В Риме", isCorrect: false },
+              { sortOrder: 2, text: "В Иерусалиме", isCorrect: false },
+              { sortOrder: 3, text: "В Коринфе", isCorrect: true },
+              { sortOrder: 4, text: "В Эфесе", isCorrect: false },
+            ],
+          },
+          {
+            sortOrder: 3,
+            type: "multiple_choice",
+            score: 3,
+            question:
+              "Какие утверждения верны относительно центрального тезиса Рим. 1:16–17? (выберите все подходящие)",
+            options: [
+              {
+                sortOrder: 1,
+                text: "Евангелие — сила Божия ко спасению",
+                isCorrect: true,
+              },
+              {
+                sortOrder: 2,
+                text: "Праведность открывается от веры в веру",
+                isCorrect: true,
+              },
+              {
+                sortOrder: 3,
+                text: "Спасение даётся только по делам закона",
+                isCorrect: false,
+              },
+              {
+                sortOrder: 4,
+                text: "«Праведный верою жив будет»",
+                isCorrect: true,
+              },
+            ],
+          },
+          {
+            sortOrder: 4,
+            type: "single_choice",
+            score: 2,
+            question: "Какой была римская церковь по составу?",
+            options: [
+              { sortOrder: 1, text: "Только из иудеев", isCorrect: false },
+              { sortOrder: 2, text: "Только из язычников", isCorrect: false },
+              {
+                sortOrder: 3,
+                text: "Смешанная община иудеев и язычников",
+                isCorrect: true,
+              },
+              { sortOrder: 4, text: "Только из римских граждан", isCorrect: false },
+            ],
+          },
+          {
+            sortOrder: 5,
+            type: "text",
+            score: 1,
+            question:
+              "Кратко сформулируйте своими словами, что означает выражение «праведный верою жив будет».",
+          },
+        ],
       },
     ],
   },
@@ -425,14 +526,44 @@ const rimlyanamParts: PartSeed[] = [
   },
 ];
 
+async function seedLessonQuestions(
+  tx: Parameters<Parameters<typeof prisma.$transaction>[0]>[0],
+  lessonId: number,
+  questions: QuestionSeed[],
+) {
+  for (const question of questions) {
+    const createdQuestion = await tx.testQuestion.create({
+      data: {
+        lessonId,
+        question: question.question,
+        type: question.type,
+        score: question.score,
+        sortOrder: question.sortOrder,
+      },
+    });
+
+    if (question.options?.length) {
+      await tx.testQuestionOption.createMany({
+        data: question.options.map((option) => ({
+          questionId: createdQuestion.id,
+          text: option.text,
+          isCorrect: option.isCorrect ?? false,
+          sortOrder: option.sortOrder,
+        })),
+      });
+    }
+  }
+}
+
 async function seedRimlyanamParts(courseId: number) {
   const existingParts = await prisma.coursePart.count({
     where: { courseId, deletedAt: null },
   });
   if (existingParts > 0) {
     console.log(
-      `rimlyanam #${courseId}: parts already exist (${existingParts}), skipping`,
+      `rimlyanam #${courseId}: parts already exist (${existingParts}), seeding missing questions only`,
     );
+    await seedMissingTestQuestions(courseId);
     return;
   }
 
@@ -464,7 +595,7 @@ async function seedRimlyanamParts(courseId: number) {
           videoId = video.id;
         }
 
-        await tx.lesson.create({
+        const createdLesson = await tx.lesson.create({
           data: {
             coursePartId: createdPart.id,
             name: lesson.name,
@@ -475,9 +606,18 @@ async function seedRimlyanamParts(courseId: number) {
             videoId,
             points: lesson.points ?? 0,
             durationSeconds: lesson.durationSeconds,
+            timeLimitSeconds: lesson.timeLimitSeconds,
             passingScore: lesson.passingScore,
+            maxAttempts: lesson.maxAttempts,
           },
         });
+
+        if (lesson.type === "test" && lesson.questions?.length) {
+          await seedLessonQuestions(tx, createdLesson.id, lesson.questions);
+          console.log(
+            `  test lesson #${createdLesson.id}: ${lesson.questions.length} questions`,
+          );
+        }
 
         totalDuration += lesson.durationSeconds ?? 0;
       }
@@ -496,6 +636,58 @@ async function seedRimlyanamParts(courseId: number) {
   console.log(
     `rimlyanam #${courseId}: seeded parts, durationSeconds=${totalDuration}`,
   );
+}
+
+async function seedMissingTestQuestions(courseId: number) {
+  const testLessons = await prisma.lesson.findMany({
+    where: {
+      type: "test",
+      deletedAt: null,
+      coursePart: { courseId, deletedAt: null },
+    },
+    include: {
+      questions: { select: { id: true } },
+      coursePart: { select: { sortOrder: true } },
+    },
+  });
+
+  for (const lesson of testLessons) {
+    if (lesson.questions.length > 0) {
+      console.log(
+        `test lesson #${lesson.id} already has ${lesson.questions.length} questions, skipping`,
+      );
+      continue;
+    }
+
+    const partSeed = rimlyanamParts.find(
+      (part) => part.sortOrder === lesson.coursePart.sortOrder,
+    );
+    const lessonSeed = partSeed?.lessons.find(
+      (item) => item.sortOrder === lesson.sortOrder && item.type === "test",
+    );
+
+    if (!lessonSeed?.questions?.length) {
+      console.log(`test lesson #${lesson.id}: no question seed defined`);
+      continue;
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await seedLessonQuestions(tx, lesson.id, lessonSeed.questions!);
+      await tx.lesson.update({
+        where: { id: lesson.id },
+        data: {
+          timeLimitSeconds: lessonSeed.timeLimitSeconds,
+          maxAttempts: lessonSeed.maxAttempts,
+          passingScore: lessonSeed.passingScore,
+          points: lessonSeed.points ?? lesson.points,
+        },
+      });
+    });
+
+    console.log(
+      `test lesson #${lesson.id}: added ${lessonSeed.questions.length} questions`,
+    );
+  }
 }
 
 async function main() {
