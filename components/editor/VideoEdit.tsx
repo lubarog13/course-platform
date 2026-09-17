@@ -1,99 +1,150 @@
 "use client";
 
-import { Video, VideoPlatform } from "@/app/lib/models";
-import {
-    ButtonGroup,
-    ButtonGroupSeparator,
-    ButtonGroupText,
-} from "@/components/ui/button-group"
+import { useFormContext, useWatch } from "react-hook-form";
+
+import type { VideoPlatform } from "@/app/lib/models";
+import type { File as FileModel } from "@/app/lib/models";
 import { Button } from "@/components/ui/button";
-import { useEffect } from "react";
-import { useState } from "react";
-import { Label } from "../ui/label";
+import { ButtonGroup } from "@/components/ui/button-group";
 import { Input } from "@/components/ui/input";
+import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import FileUploader from "../base/FileUploader";
-import { File as FileModel } from "@/app/lib/models";
+import type { LessonFormValues } from "../lessons/lessonForm";
 
+const platforms: { value: VideoPlatform; label: string }[] = [
+  { value: "youtube", label: "YouTube" },
+  { value: "rutube", label: "Rutube" },
+  { value: "self_hosted", label: "Загрузить файл" },
+  { value: "other", label: "Другое" },
+];
 
-export default function VideoEdit({ video, onSaved }: { video: Video, onSaved: (video: Video) => void }) {
-    const [platform, setPlatform] = useState(video.platform);
-    const [url, setUrl] = useState(video.url);
-    const [title, setTitle] = useState(video.title ?? "");
-    const [durationSeconds, setDurationSeconds] = useState(video.durationSeconds ?? 0);
-    const [thumbnailUrl, setThumbnailUrl] = useState(video.thumbnailUrl ?? "");
-    const handleSave = () => {
-        const body: Video = {
-            id: video.id,
-            platform: platform,
-            url: url,
-            title: title,
-            durationSeconds: durationSeconds,
-            thumbnailUrl: thumbnailUrl,
-        };
-        fetch(`/api/video/${video.id}`, {
-            method: "PUT",
-            body: JSON.stringify(body),
-        }).then(res => res.json()).then(data => {
-            onSaved(data);
-        }).catch(error => {
-            console.error(error);
-        });
-    };
-    const handleUploaded = (files: FileModel[]) => {
-      setUrl(files[0].url ?? "");
-      setTitle(files[0].originalName ?? "");
+export default function VideoEdit() {
+  const {
+    register,
+    control,
+    setValue,
+    formState: { errors },
+  } = useFormContext<LessonFormValues>();
+
+  const platform = useWatch({ control, name: "video.platform" });
+  const videoErrors = errors.video;
+
+  const handleUploaded = (files: FileModel[]) => {
+    const file = files[0];
+    if (!file) return;
+    setValue("video.url", file.url ?? "", { shouldDirty: true, shouldValidate: true });
+    if (file.originalName) {
+      setValue("video.title", file.originalName, { shouldDirty: true });
     }
+  };
+
   return (
     <div>
-    <Label>Платформа</Label>
+      <FieldLabel>Платформа</FieldLabel>
       <ButtonGroup className="my-4">
-        <Button className={platform === "youtube" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"} onClick={() => setPlatform("youtube")}>YouTube</Button>
-        <Button className={platform === "rutube" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"} onClick={() => setPlatform("rutube")}>Rutube</Button>
-        <Button className={platform === "self_hosted" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"} onClick={() => setPlatform("self_hosted")}>Загрузить файл</Button>
-        <Button className={platform === "other" ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"} onClick={() => setPlatform("other")}>Другое</Button>
+        {platforms.map((item) => (
+          <Button
+            key={item.value}
+            type="button"
+            className={
+              platform === item.value
+                ? "bg-primary text-primary-foreground"
+                : "bg-secondary text-secondary-foreground"
+            }
+            onClick={() =>
+              setValue("video.platform", item.value, {
+                shouldDirty: true,
+                shouldValidate: true,
+              })
+            }
+          >
+            {item.label}
+          </Button>
+        ))}
       </ButtonGroup>
-      {platform!=='self_hosted' && (
-        <div className="my-4 grid gap-2 w-full grid-cols-[100%] overflow-hidden">
-          <Label>URL</Label>
-          <Input type="text" value={video.url} onChange={(e) => setUrl(e.target.value)} />
-        </div>
+
+      {platform !== "self_hosted" && (
+        <Field className="my-4" data-invalid={!!videoErrors?.url || undefined}>
+          <FieldLabel htmlFor="video-url">URL</FieldLabel>
+          <Input
+            id="video-url"
+            type="text"
+            aria-invalid={!!videoErrors?.url}
+            placeholder="https://…"
+            {...register("video.url")}
+          />
+          <FieldError errors={[videoErrors?.url]} />
+        </Field>
       )}
-    {platform === "self_hosted" && (
-      <>
-      <div className="my-4 grid gap-2 w-full grid-cols-[100%] overflow-hidden">
-       <Label>Файл видео (форматы: mp4, mov, avi, mkv, webm)</Label>
-       <FileUploader onUploaded={handleUploaded} />
-     </div>
-       <div className="my-4 grid gap-2 w-full grid-cols-[100%] overflow-hidden">
-       <Label>URL</Label>
-       <Input type="text" disabled value={url} onChange={(e) => setUrl(e.target.value)} />
-     </div>
-     </>
-    )}
-    <div className="grid gap-2 w-full grid-cols-[100%] overflow-hidden my-4">
-      <Label>Название видео</Label>
-      <Input type="text" value={video.title ?? ""} onChange={(e) => setTitle(e.target.value)} />
+
+      {platform === "self_hosted" && (
+        <>
+          <Field className="my-4">
+            <FieldLabel>Файл видео (форматы: mp4, mov, avi, mkv, webm)</FieldLabel>
+            <FileUploader onUploaded={handleUploaded} />
+          </Field>
+          <Field className="my-4" data-invalid={!!videoErrors?.url || undefined}>
+            <FieldLabel htmlFor="video-file-url">URL</FieldLabel>
+            <Input
+              id="video-file-url"
+              type="text"
+              disabled
+              aria-invalid={!!videoErrors?.url}
+              {...register("video.url")}
+            />
+            <FieldError errors={[videoErrors?.url]} />
+          </Field>
+        </>
+      )}
+
+      <Field className="my-4" data-invalid={!!videoErrors?.title || undefined}>
+        <FieldLabel htmlFor="video-title">Название видео</FieldLabel>
+        <Input id="video-title" type="text" {...register("video.title")} />
+        <FieldError errors={[videoErrors?.title]} />
+      </Field>
+
+      <Field className="my-4" data-invalid={!!videoErrors?.durationSeconds || undefined}>
+        <FieldLabel htmlFor="video-duration">Длительность (секунды)</FieldLabel>
+        <Input
+          id="video-duration"
+          type="number"
+          min={0}
+          aria-invalid={!!videoErrors?.durationSeconds}
+          {...register("video.durationSeconds", {
+            setValueAs: (value) => {
+              if (value === "" || value == null) return null;
+              const parsed = Number(value);
+              return Number.isNaN(parsed) ? Number.NaN : parsed;
+            },
+          })}
+        />
+        <FieldError errors={[videoErrors?.durationSeconds]} />
+      </Field>
+
+      {platform === "self_hosted" && (
+        <Field className="my-4" data-invalid={!!videoErrors?.thumbnailUrl || undefined}>
+          <div className="font-bold text-lg mb-2">Картинка превью</div>
+          <FieldLabel htmlFor="video-thumbnail">Ссылка на миниатюру</FieldLabel>
+          <Input
+            id="video-thumbnail"
+            type="text"
+            {...register("video.thumbnailUrl")}
+          />
+          <div className="mt-3">
+            <FieldLabel>Или загрузите миниатюру</FieldLabel>
+            <FileUploader
+              onUploaded={(files) => {
+                if (!files[0]?.url) return;
+                setValue("video.thumbnailUrl", files[0].url, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                });
+              }}
+            />
+          </div>
+          <FieldError errors={[videoErrors?.thumbnailUrl]} />
+        </Field>
+      )}
     </div>
-    <div className="grid gap-2 w-full grid-cols-[100%] overflow-hidden my-4">
-      <Label>Длительность (секунды)</Label>
-      <Input type="number" value={video.durationSeconds ?? 0} onChange={(e) => setDurationSeconds(Number(e.target.value))} />
-    </div>
-    {platform === "self_hosted" && (
-    <div className="grid gap-2 w-full grid-cols-[100%] overflow-hidden my-4">
-      <div className="font-bold text-lg mb-2">Картинка превью</div>
-      <Label>Ссылка на миниатюру</Label>
-      <Input type="text" value={video.thumbnailUrl ?? ""} onChange={(e) => setThumbnailUrl(e.target.value)} />
-      <div className="mt-3">
-        <Label>Или загрузите миниатюру</Label>
-        <FileUploader onUploaded={(files) => {
-          setThumbnailUrl(files[0].url);
-        }} />
-      </div>
-    </div>
-    )}
-    <div className="my-4">
-      <Button onClick={handleSave}>Сохранить</Button>
-    </div>
-      </div>
   );
 }

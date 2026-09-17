@@ -12,10 +12,24 @@ export default function EditorView() {
     const [error, setError] = useState<string | null>(null);
     const searchParams = useSearchParams();
     const lessonId = searchParams?.get("lessonId") ?? -1;
+    const type = searchParams?.get("type") ?? "";
+    const defaultLesson: LessonFullDto = {
+        id: -1,
+        name: "",
+        description: "",
+        textContent: "",
+        type: "text",
+        video: null,
+    };
     
     const fetchLesson = async (signal: AbortSignal) => {
         if (lessonId === -1) {
             setLoading(false);
+            if (type === "lesson") {
+                setLesson(defaultLesson);
+                setLoading(false);
+                return;
+            } 
             setError("Нечего редактировать");
             return;
         }
@@ -44,7 +58,7 @@ export default function EditorView() {
     return (
       <div className="py-2">
         {lesson ? (
-          <LessonEdit lesson={lesson} onSaved={setLesson} />
+          <LessonEdit lesson={lesson} isNew={lessonId == -1} onSaved={setLesson} />
         ) : (
           <NotFound text="Урок не найден" showHomeButton={true} />
         )}
