@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { LessonFullDto } from "@/app/lib/lessons";
 import { LessonDto } from "@/app/lib/courseParts";
 import { Button } from "../ui/button";
-import { ArrowLeftIcon, ArrowRightIcon } from "lucide-react";
+import { ArrowLeftIcon, ArrowRightIcon, FileIcon } from "lucide-react";
 import MarkdownContent from "../base/MarkdownContent";
 import TestView from "./TestView";
 import VideoView from "./VideoView";
@@ -75,6 +75,15 @@ export default function LessonView({lessonId, prevLesson, nextLesson, onArrowCli
                 <div className="text-gray-700 dark:text-gray-300 mb-4">
                     {lesson.description}
                 </div>
+                {lesson.attachment && (
+                    <div className="flex items-center gap-2">
+                        <FileIcon className="w-4 h-4" />
+                        <a href={lesson.attachment.url} target="_blank" className="text-blue-500 dark:text-blue-400 hover:text-blue-600 dark:hover:text-blue-500">
+                            {lesson.attachment.originalName}
+                        </a>
+                    </div>
+                )
+                )}
                 {
                     lesson.type === "text" && <MarkdownContent nodes={lesson.textContent || ""} />
                 }

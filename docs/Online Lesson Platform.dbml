@@ -190,6 +190,7 @@ Table Lesson {
   type LessonType [not null]
   text_content text [note: 'Обязательно при type = text']
   video_id integer [ref: > Video.id, note: 'Обязательно при type = video']
+  attachment_id integer [ref: > File.id, note: 'Файл прикрепленный к уроку']
   points integer [not null, default: 0, note: 'Количество баллов за урок']
   duration_seconds integer [note: 'Ожидаемая длительность урока']
   time_limit_seconds integer [note: 'Лимит на тест; NULL = без лимита']
@@ -229,6 +230,8 @@ Table TestQuestion {
   type QuestionType [not null]
   score integer [not null, default: 1]
   sort_order integer [not null]
+  required boolean [not null, default: true, note: 'Обязательный ли вопрос']
+  attachment_needed boolean [not null, default: false]
 
   checks {
     `score > 0` [name: 'question_score_positive']
@@ -291,6 +294,7 @@ Table UserTestAnswer {
   attempt_id integer [not null, ref: > TestAttempt.id]
   question_id integer [not null, ref: > TestQuestion.id]
   answer_text text [note: 'Для QuestionType.text']
+  answer_file_id integer [ref: > File.id, note: 'Файл ответа']
   score integer [not null, default: 0, check: `score >= 0`]
 
   indexes {

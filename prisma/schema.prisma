@@ -118,8 +118,10 @@ model File {
 
   uploader           User                @relation(fields: [uploadedBy], references: [id])
   courseCovers       Course[]            @relation("CourseCover")
+  attachments        Lesson[]            @relation("LessonAttachment")
   certificates       Certificate[]
   messageAttachments MessageAttachment[]
+  userTestAnswers    UserTestAnswer[]     @relation("UserTestAnswerFile")
 
   @@map("File")
 }
@@ -212,7 +214,6 @@ model Video {
   platform         VideoPlatform
   title            String?
   /// ID ролика на YouTube/Rutube
-  externalId       String?       @map("external_id")
   durationSeconds  Int?          @map("duration_seconds")
   thumbnailUrl     String?       @map("thumbnail_url")
 
@@ -233,6 +234,7 @@ model Lesson {
   textContent       String?    @map("text_content") @db.Text
   /// Обязательно при type = video
   videoId           Int?       @map("video_id")
+  attachmentId      Int?       @map("attachment_id")
   /// Количество баллов за урок
   points            Int        @default(0)
   /// Ожидаемая длительность урока
@@ -253,6 +255,7 @@ model Lesson {
 
   coursePart   CoursePart      @relation(fields: [coursePartId], references: [id], onDelete: Cascade)
   video        Video?          @relation(fields: [videoId], references: [id])
+  attachment   File?           @relation("LessonAttachment", fields: [attachmentId], references: [id])
   questions    TestQuestion[]
   attempts     TestAttempt[]
   userProgress UserLesson[]
@@ -272,6 +275,8 @@ model TestQuestion {
   type      QuestionType
   score     Int          @default(1)
   sortOrder Int          @map("sort_order")
+  required Boolean    @default(true) @map("required")
+  attachmentNeeded Boolean    @default(false) @map("attachment_needed")
 
   lesson  Lesson               @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   options TestQuestionOption[]
@@ -321,10 +326,12 @@ model UserTestAnswer {
   questionId  Int     @map("question_id")
   /// Для QuestionType.text
   answerText  String? @map("answer_text") @db.Text
+  answerFileId Int?    @map("answer_file_id")
   score       Int     @default(0)
 
   attempt         TestAttempt            @relation(fields: [attemptId], references: [id], onDelete: Cascade)
   question        TestQuestion           @relation(fields: [questionId], references: [id])
+  answerFile      File?                  @relation("UserTestAnswerFile", fields: [answerFileId], references: [id])
   selectedOptions UserTestAnswerOption[]
 
   @@unique([attemptId, questionId])

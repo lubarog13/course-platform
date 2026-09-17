@@ -1,5 +1,5 @@
-import type { Lesson, TestQuestion, TestQuestionOption } from "@prisma/client";
-
+import type { Lesson, TestQuestion, TestQuestionOption, VideoPlatform, Video } from "@prisma/client";
+import type { File as FileModel } from "@/app/lib/models";
 import {
   asBoolean,
   asOptionalId,
@@ -26,12 +26,13 @@ export type TestQuestionDto = TestQuestion & {
 
 export type LessonFullDto = Lesson & {
   testQuestions: TestQuestionDto[];
+  attachment?: FileModel,
   video?: {
     id: number;
     url: string;
-    platform: string;
     title: string | null;
     durationSeconds: number | null;
+    platform: VideoPlatform;
     thumbnailUrl: string | null;
   } | null;
 };
@@ -81,6 +82,7 @@ export async function findLesson(id: number, includeCorrectAnswers = false) {
     where: { id, deletedAt: null },
     include: {
       video: true,
+      attachment: true,
       questions: {
         orderBy: { sortOrder: "asc" },
         include: includeCorrectAnswers
@@ -99,6 +101,14 @@ export async function findLesson(id: number, includeCorrectAnswers = false) {
     ),
   } satisfies LessonFullDto;
 }
+
+export async function findVideo(id: number): Promise<Video | null> {
+  const video = await prisma.video.findUnique({
+    where: { id, deletedAt: null },
+  });
+  if (!video) return null;
+  return video;
+};
 
 export async function listLessons(coursePartId: number) {
   return prisma.lesson.findMany({
@@ -131,6 +141,14 @@ export type LessonWriteData = {
   reviewEnabled?: boolean;
   manualGrading?: boolean;
   maxAttempts?: number | null;
+};
+
+export type VideoWriteData = {
+  url: string;
+  title: string | null;
+  durationSeconds: number | null;
+  platform: VideoPlatform;
+  thumbnailUrl: string | null;
 };
 
 export function parseLessonBody(
@@ -221,6 +239,25 @@ export function parseLessonBody(
   }
 
   return data;
+}
+
+export function parseVideoBody(
+  body: unknown,
+  mode: "create" | "update",
+): VideoWriteData {
+  const raw = requireObject(body);
+  const url = asRequiredString(raw.url, "url");
+  const title = asOptionalString(raw.title, "title") ?? undefined;
+  const durationSeconds = asOptionalInt(raw.durationSeconds, "durationSeconds", 1);
+  const platform = asRequiredString(raw.platform, "platform") as VideoPlatform;
+  const thumbnailUrl = asOptionalString(raw.thumbnailUrl, "thumbnailUrl") ?? undefined;
+  return {
+    url,
+    title: title ?? null,
+    durationSeconds: durationSeconds ?? null,
+    platform,
+    thumbnailUrl: thumbnailUrl ?? null,
+  };
 }
 
 function asQuestionType(value: unknown): QuestionType | undefined {

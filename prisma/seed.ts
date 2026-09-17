@@ -1,8 +1,18 @@
+import { randomBytes, scryptSync } from "node:crypto";
 import {
   LessonType,
   PrismaClient,
   type QuestionType,
 } from "@prisma/client";
+
+const TEACHER_EMAIL = "teacher@example.com";
+const TEACHER_PASSWORD = "teacher123";
+
+function hashPassword(password: string): string {
+  const salt = randomBytes(16).toString("hex");
+  const key = scryptSync(password, salt, 64).toString("hex");
+  return `scrypt:${salt}:${key}`;
+}
 
 const prisma = new PrismaClient();
 
@@ -589,7 +599,6 @@ async function seedRimlyanamParts(courseId: number) {
               platform: "youtube",
               title: lesson.videoTitle ?? lesson.name,
               durationSeconds: lesson.durationSeconds,
-              externalId: "placeholder",
             },
           });
           videoId = video.id;
@@ -691,18 +700,32 @@ async function seedMissingTestQuestions(courseId: number) {
 }
 
 async function main() {
-  const teacher = await prisma.user.upsert({
-    where: { email: "teacher@example.com" },
-    update: {},
-    create: {
-      email: "teacher@example.com",
-      passwordHash: "dev-only-not-a-real-hash",
-      name: "Иван",
-      surname: "Петров",
-      patronymic: "Сергеевич",
-      role: "teacher",
+  const teacherData = {
+    email: TEACHER_EMAIL,
+    passwordHash: hashPassword(TEACHER_PASSWORD),
+    name: "Иван",
+    surname: "Петров",
+    patronymic: "Сергеевич",
+    phone: "+7 900 123-45-67",
+    role: "teacher" as const,
+    emailVerifiedAt: new Date("2026-01-01T10:00:00Z"),
+    userDetails: {
+      position: "Преподаватель библейских дисциплин",
+      achievements: [
+        "Кандидат богословия",
+        "Автор курса «Послание к Римлянам»",
+      ],
     },
+  };
+
+  const teacher = await prisma.user.upsert({
+    where: { email: TEACHER_EMAIL },
+    update: teacherData,
+    create: teacherData,
   });
+  console.log(
+    `teacher #${teacher.id} ${teacher.email} (пароль: ${TEACHER_PASSWORD})`,
+  );
 
   const categoryBySlug = new Map<string, number>();
   for (const category of categories) {

@@ -211,3 +211,27 @@ body {
       transform: rotate(-360deg);
   }
 }
+
+@layer components {
+  .lesson-mdx-editor {
+    --basePageBg: var(--background);
+    --baseBg: var(--background);
+    --baseBgSubtle: var(--muted);
+    --baseBgHover: var(--accent);
+    --baseBgActive: var(--accent);
+    --baseBorder: var(--border);
+    --baseBorderHover: var(--border);
+    --baseText: var(--foreground);
+    --baseTextContrast: var(--foreground);
+    --baseTextMuted: var(--muted-foreground);
+  }
+
+  .lesson-mdx-editor [class*="_toolbarRoot"] {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in oklab, var(--background) 92%, transparent);
+    backdrop-filter: blur(8px);
+  }
+}
