@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { MDXEditorMethods } from "@mdxeditor/editor";
-import { FormProvider, useForm, useWatch, type SubmitHandler } from "react-hook-form";
+import { FormProvider, useForm, useWatch, type Resolver, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
 import type { LessonFullDto } from "@/app/lib/lessons";
-import type { Video } from "@/app/lib/models";
+import type { File as FileModel, Video } from "@/app/lib/models";
+import { CoursePartExtendedDto } from "@/app/lib/courseParts";
 import { Kbd } from "@/components/ui/kbd";
 import { ForwardRefEditor } from "@/components/base/ForwardRefEditor";
+import FileUploader from "@/components/base/FileUploader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,11 +24,14 @@ import {
   type LessonFormValues,
 } from "./lessonForm";
 import { useHotkeys } from "react-hotkeys-hook";
+import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
+import { FileIcon, XIcon } from "lucide-react";
 
 type LessonEditProps = {
   lesson: LessonFullDto;
   onSaved?: (lesson: LessonFullDto) => void;
   isNew: boolean;
+  userId: number;
 };
 
 function typeLabel(type: LessonFormValues["type"]) {
@@ -35,14 +40,21 @@ function typeLabel(type: LessonFormValues["type"]) {
   return "Тест";
 }
 
-export default function LessonEdit({ lesson, isNew, onSaved }: LessonEditProps) {
+function estimatedTextDuration(text: string) {
+  return Math.max(1, Math.floor(text.length / 10));
+}
+
+export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEditProps) {
   const editorRef = useRef<MDXEditorMethods>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [publishedAt, setPublishedAt] = useState<Date | null>(
+    lesson.publishedAt ? new Date(lesson.publishedAt as string | Date) : null,
+  );
 
   const form = useForm<LessonFormValues>({
-    resolver: zodResolver(lessonFormSchema),
+    resolver: zodResolver(lessonFormSchema) as Resolver<LessonFormValues>,
     mode: "onSubmit",
     reValidateMode: "onChange",
     defaultValues: toLessonFormValues(lesson),
@@ -59,21 +71,59 @@ export default function LessonEdit({ lesson, isNew, onSaved }: LessonEditProps) 
   } = form;
 
   const type = useWatch({ control, name: "type" });
+  const attachment = useWatch({ control, name: "attachment" });
+  const coursePartId = useWatch({ control, name: "coursePartId" });
   const openedLessonId = useRef<number | null>(null);
+  const [courseParts, setCourseParts] = useState<CoursePartExtendedDto[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (openedLessonId.current === lesson.id) return;
     openedLessonId.current = lesson.id;
-    reset(toLessonFormValues(lesson));
-    editorRef.current?.setMarkdown(lesson.textContent ?? "");
+    const values = toLessonFormValues(lesson);
+    reset(values);
+    editorRef.current?.setMarkdown(values.textContent);
+    setPublishedAt(values.publishedAt);
     setSavedAt(null);
     setError(null);
   }, [lesson, reset]);
+
+  const fetchCourseParts = async (signal: AbortSignal) => {
+    await fetch(`/api/course-part?userId=${userId}`)
+        .then(res => res.json())
+        .then(data => setCourseParts(data))
+        .catch(error => {
+          console.error(error);
+        }).finally(() => {
+          if (!signal.aborted) setLoading(false);
+        });
+  };
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setLoading(true);
+    fetchCourseParts(controller.signal);
+    return () => controller.abort();
+  }, []);
 
   const syncMarkdown = (markDirty = false) => {
     const markdown = editorRef.current?.getMarkdown() ?? getValues("textContent");
     setValue("textContent", markdown, { shouldDirty: markDirty });
     return markdown;
+  };
+
+  const syncDuration = (values: LessonFormValues, markDirty = false) => {
+    let next: number | null = values.durationSeconds;
+    if (values.type === "video" && values.video.durationSeconds != null) {
+      next = values.video.durationSeconds;
+    } else if (values.type === "text") {
+      next = estimatedTextDuration(values.textContent ?? "");
+    }
+    if (next === values.durationSeconds) return;
+    setValue("durationSeconds", next, {
+      shouldDirty: markDirty,
+      shouldValidate: markDirty,
+    });
   };
 
   const saveVideo = async (values: LessonFormValues): Promise<Video | null> => {
@@ -85,12 +135,15 @@ export default function LessonEdit({ lesson, isNew, onSaved }: LessonEditProps) 
       thumbnailUrl: values.video.thumbnailUrl.trim() || null,
     };
 
-    const isNew = values.video.id < 1;
-    const response = await fetch(isNew ? "/api/video" : `/api/video/${values.video.id}`, {
-      method: isNew ? "POST" : "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    const creatingVideo = values.video.id < 1;
+    const response = await fetch(
+      creatingVideo ? "/api/video" : `/api/video/${values.video.id}`,
+      {
+        method: creatingVideo ? "POST" : "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    );
     const body = await response.json().catch(() => null);
     if (!response.ok) {
       throw new Error(body?.error ?? "Не удалось сохранить видео");
@@ -102,7 +155,9 @@ export default function LessonEdit({ lesson, isNew, onSaved }: LessonEditProps) 
     setSaving(true);
     setError(null);
     try {
-      const markdown = syncMarkdown();
+      const markdown = syncMarkdown(false);
+      syncDuration({ ...values, textContent: markdown }, false);
+      const durationSeconds = getValues("durationSeconds");
       let videoId = lesson.videoId ?? (values.video.id > 0 ? values.video.id : null);
 
       if (values.type === "video") {
@@ -110,24 +165,38 @@ export default function LessonEdit({ lesson, isNew, onSaved }: LessonEditProps) 
         videoId = savedVideo?.id ?? videoId;
       }
 
-      const response = await fetch(isNew ? "/api/lesson" : `/api/lesson/${lesson.id}`, {
-        method: isNew ? "POST" : "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: values.type,
-          name: values.name.trim(),
-          description: values.description.trim() || null,
-          textContent: values.type === "test" ? null : markdown,
-          ...(values.type === "video" ? { videoId } : {}),
-        }),
-      });
+      const creating = isNew && (openedLessonId.current ?? lesson.id) < 1;
+      const response = await fetch(
+        creating ? "/api/lesson" : `/api/lesson/${openedLessonId.current ?? lesson.id}`,
+        {
+          method: creating ? "POST" : "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: values.type,
+            name: values.name.trim(),
+            description: values.description.trim() || null,
+            textContent: values.type === "test" ? null : markdown,
+            publishedAt: publishedAt,
+            coursePartId: values.coursePartId,
+            sortOrder: values.sortOrder,
+            durationSeconds,
+            attachmentId: values.attachment?.id ?? null,
+            ...(values.type === "video" ? { videoId } : {}),
+          }),
+        },
+      );
       const body = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error(body?.error ?? "Не удалось сохранить урок");
       }
 
       const saved = body as LessonFullDto;
-      reset(toLessonFormValues(saved));
+      const formValues = toLessonFormValues(saved);
+      // Prevent the lesson-prop effect from treating create→id as a fresh open.
+      openedLessonId.current = saved.id;
+      reset(formValues);
+      editorRef.current?.setMarkdown(formValues.textContent);
+      setPublishedAt(formValues.publishedAt);
       setSavedAt(new Date());
       onSaved?.(saved);
     } catch (err) {
@@ -135,6 +204,13 @@ export default function LessonEdit({ lesson, isNew, onSaved }: LessonEditProps) 
     } finally {
       setSaving(false);
     }
+  };
+
+  const publishLesson = async () => {
+    const nextPublishedAt = new Date();
+    setPublishedAt(nextPublishedAt);
+    setValue("publishedAt", nextPublishedAt, { shouldDirty: true });
+    await form.handleSubmit(onSubmit)();
   };
 
   useHotkeys('ctrl+s', (e) => {
@@ -162,15 +238,27 @@ export default function LessonEdit({ lesson, isNew, onSaved }: LessonEditProps) 
             </div>
             <p className="text-muted-foreground text-sm">
               {isDirty
-                ? <>Есть несохранённые изменения<Kbd>Ctrl+S</Kbd></>
+                ? <>Есть несохранённые изменения <Kbd>Ctrl+S</Kbd></>
                 : savedAt
                   ? `Сохранено в ${savedAt.toLocaleTimeString("ru-RU")}`
                   : "Изменения ещё не сохранялись"}
             </p>
           </div>
-          <Button type="submit" disabled={saving}>
+          <div className="flex items-center gap-2">
+          <Button type="submit" disabled={saving || !isDirty}>
             {saving ? "Сохранение…" : "Сохранить"}
           </Button>
+          {savedAt && !isDirty && (
+            <Button
+              variant="secondary"
+              type="button"
+              disabled={saving || !!publishedAt}
+              onClick={() => void publishLesson()}
+            >
+              {publishedAt ? "Опубликовано" : "Опубликовать"}
+            </Button>
+          )}
+          </div>
         </div>
 
         {error && (
@@ -178,6 +266,47 @@ export default function LessonEdit({ lesson, isNew, onSaved }: LessonEditProps) 
             {error}
           </p>
         )}
+
+        <div className="sm:grid-cols-2 grid gap-4">
+          <Field data-invalid={!!errors.coursePartId || undefined}>
+            <FieldLabel htmlFor="course-part-id">Часть курса</FieldLabel>
+            <Select
+              value={coursePartId || null}
+              disabled={loading}
+              onValueChange={(value: number | null) =>
+                setValue("coursePartId", value ?? 0, {
+                  shouldDirty: true,
+                  shouldValidate: true,
+                })
+              }
+              id="course-part-id"
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите часть курса" />
+              </SelectTrigger>
+              <SelectContent>
+                {courseParts.map((part) => (
+                  <SelectItem key={part.id} value={Number(part.id)}>
+                    {part.name} ({part.course.name})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FieldError errors={[errors.coursePartId]} />
+          </Field>
+          <Field data-invalid={!!errors.sortOrder || undefined}>
+            <FieldLabel htmlFor="sort-order">Номер урока</FieldLabel>
+            <Input
+              id="sort-order"
+              type="number"
+              min={1}
+              aria-invalid={!!errors.sortOrder}
+              placeholder="Номер урока в части курса"
+              {...register("sortOrder", { valueAsNumber: true })}
+            />
+            <FieldError errors={[errors.sortOrder]} />
+          </Field>
+        </div>
 
         <div className="grid gap-4">
           <Field data-invalid={!!errors.name || undefined}>
@@ -234,21 +363,96 @@ export default function LessonEdit({ lesson, isNew, onSaved }: LessonEditProps) 
             >
               <FieldLabel>Текст урока</FieldLabel>
               <ForwardRefEditor
-                key={lesson.id}
+                key={lesson.id < 1 ? "new" : lesson.id}
                 className="w-full"
                 ref={editorRef}
-                markdown={lesson.textContent ?? ""}
-                onChange={(value) =>
+                markdown={getValues("textContent")}
+                onChange={(value) => {
+                  const prev = getValues("textContent");
+                  if (value === prev) return;
                   setValue("textContent", value, {
                     shouldDirty: true,
                     shouldValidate: !!errors.textContent,
-                  })
-                }
+                  });
+                  syncDuration({ ...getValues(), textContent: value }, false);
+                }}
                 placeholder="Начните писать урок…"
               />
               <FieldError errors={[errors.textContent]} />
             </Field>
           )}
+
+          <div className="grid gap-4">
+            <Field data-invalid={!!errors.durationSeconds || undefined}>
+              <FieldLabel htmlFor="lesson-duration">
+                Ожидаемая продолжительность (секунды)
+              </FieldLabel>
+              <Input
+                id="lesson-duration"
+                type="number"
+                min={0}
+                aria-invalid={!!errors.durationSeconds}
+                placeholder="Например, 1800"
+                {...register("durationSeconds", {
+                  setValueAs: (value) => {
+                    if (value === "" || value == null) return null;
+                    const parsed = Number(value);
+                    return Number.isNaN(parsed) ? Number.NaN : parsed;
+                  },
+                })}
+              />
+              <FieldError errors={[errors.durationSeconds]} />
+            </Field>
+
+            <Field data-invalid={!!errors.attachment || undefined}>
+              <FieldLabel>Вложение (необязательно)</FieldLabel>
+              {attachment ? (
+                <div className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+                  <FileIcon className="size-4 shrink-0" />
+                  <a
+                    href={attachment.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="min-w-0 flex-1 truncate text-blue-500 hover:underline dark:text-blue-400"
+                  >
+                    {attachment.originalName}
+                  </a>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-8 shrink-0"
+                    onClick={() =>
+                      setValue("attachment", null, {
+                        shouldDirty: true,
+                        shouldValidate: true,
+                      })
+                    }
+                  >
+                    <XIcon className="size-4" />
+                    <span className="sr-only">Удалить вложение</span>
+                  </Button>
+                </div>
+              ) : (
+                <FileUploader
+                  onUploaded={(files: FileModel[]) => {
+                    const file = files[0];
+                    if (!file) return;
+                    setValue(
+                      "attachment",
+                      {
+                        id: file.id,
+                        url: file.url,
+                        originalName: file.originalName,
+                      },
+                      { shouldDirty: true, shouldValidate: true },
+                    );
+                  }}
+                />
+              )}
+              <FieldError errors={[errors.attachment]} />
+            </Field>
+          </div>
 
           {type === "test" && (
             <p className="text-muted-foreground rounded-xl border border-dashed px-4 py-8 text-center text-sm">
@@ -257,7 +461,11 @@ export default function LessonEdit({ lesson, isNew, onSaved }: LessonEditProps) 
             </p>
           )}
 
-          {type === "video" && <VideoEdit />}
+          {type === "video" && (
+            <VideoEdit
+              onDurationChanged={() => syncDuration(getValues(), false)}
+            />
+          )}
         </div>
       </form>
     </FormProvider>

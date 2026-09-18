@@ -19,6 +19,15 @@ export type CoursePartDto = CoursePart & {
   lessons: LessonDto[];
 };
 
+
+
+export type CoursePartExtendedDto = CoursePartDto & {
+  course: {
+    id: number;
+    name: string;
+  };
+};
+
 export function coursePartsFromSql(response: any[]): CoursePartDto[] {
   const result = [] as CoursePartDto[];
   let counter = -1;
@@ -95,12 +104,12 @@ function asOptionalIdNullable(
   return asRequiredId(value, field);
 }
 
-export async function findCoursePart(id: number) {
+export async function findCoursePart(id: number, showDeleted: boolean = false, showDrafts: boolean = false) {
   return prisma.coursePart.findFirst({
-    where: { id, deletedAt: null },
+    where: { id, deletedAt: showDeleted ? undefined : null },
     include: {
       lessons: {
-        where: { deletedAt: null },
+        where: { deletedAt: showDeleted ? undefined : null, publishedAt: showDrafts ? undefined : { not: null } },
         orderBy: { sortOrder: "asc" },
         select: {
           id: true,
@@ -116,9 +125,13 @@ export async function findCoursePart(id: number) {
   });
 }
 
-export async function listCourseParts(courseId: number) {
+export async function listCourseParts(courseId: number | null, userId: number | null) {
   return prisma.coursePart.findMany({
-    where: { courseId, deletedAt: null },
+    where: {
+      ...(courseId !== null ? { courseId } : {}),
+      ...(userId !== null ? { course: { instructors: { some: { userId } } } } : {}),
+      deletedAt: null,
+    },
     orderBy: { sortOrder: "asc" },
     include: {
       lessons: {
@@ -132,6 +145,12 @@ export async function listCourseParts(courseId: number) {
           type: true,
           points: true,
           durationSeconds: true,
+        },
+      },
+      course: {
+        select: {
+          id: true,
+          name: true,
         },
       },
     },

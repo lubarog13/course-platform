@@ -169,6 +169,7 @@ type LessonSeed = {
   maxAttempts?: number;
   videoTitle?: string;
   questions?: QuestionSeed[];
+  publishedAt?: Date;
 };
 
 type PartSeed = {
@@ -618,6 +619,7 @@ async function seedRimlyanamParts(courseId: number) {
             timeLimitSeconds: lesson.timeLimitSeconds,
             passingScore: lesson.passingScore,
             maxAttempts: lesson.maxAttempts,
+            publishedAt: new Date(),
           },
         });
 

@@ -12,12 +12,13 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const courseIdRaw = request.nextUrl.searchParams.get("courseId");
-  if (!courseIdRaw || !/^\d+$/.test(courseIdRaw)) {
-    return jsonError("Нужен query-параметр courseId", 400);
+  const userIdRaw = request.nextUrl.searchParams.get("userId");
+  if ((!courseIdRaw || !/^\d+$/.test(courseIdRaw)) && (!userIdRaw || !/^\d+$/.test(userIdRaw))) {
+    return jsonError("Нужен query-параметр courseId или userId", 400);
   }
 
   try {
-    const parts = await listCourseParts(Number(courseIdRaw));
+    const parts = await listCourseParts(courseIdRaw ? Number(courseIdRaw) : null, userIdRaw ? Number(userIdRaw) : null);
     return NextResponse.json(parts);
   } catch (error) {
     return prismaErrorResponse(error, "Часть курса");

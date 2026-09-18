@@ -346,7 +346,7 @@ export function parseCourseBody(body: unknown, mode: "create" | "update"): Cours
   const language = asOptionalString(raw.language, "language");
 
   if (mode === "create" && !name) {
-    throw new Error("Поле name обязательно");
+    throw new Error("Поле название курса обязательно");
   }
 
   const slug = slugInput ?? (name ? slugify(name) : undefined);
@@ -360,6 +360,14 @@ export function parseCourseBody(body: unknown, mode: "create" | "update"): Cours
   const categoryId = asOptionalId(raw.categoryId, "categoryId");
   const tags = asTags(raw.tags);
   const publishedAt = asPublishedAt(raw.publishedAt);
+
+  if (description && description.length > 10000) {
+    throw new Error("Описание курса не может быть больше 10000 символов");
+  }
+
+  if (name && name.length > 1000) {
+    throw new Error("Название курса не может быть больше 1000 символов");
+  }
 
   return {
     ...(name !== undefined && name !== null ? { name } : {}),

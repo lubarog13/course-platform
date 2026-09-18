@@ -42,23 +42,55 @@ export async function POST(request: NextRequest) {
       return jsonError("Часть курса не найдена", 404);
     }
 
-    const lesson = await prisma.lesson.create({
-      data: {
+    const conflict = await prisma.lesson.findFirst({
+      where: {
         coursePartId: data.coursePartId,
-        name: data.name,
-        description: data.description,
         sortOrder: data.sortOrder,
-        type: data.type,
-        textContent: data.textContent,
-        videoId: data.videoId,
-        points: data.points ?? 0,
-        durationSeconds: data.durationSeconds,
-        timeLimitSeconds: data.timeLimitSeconds,
-        passingScore: data.passingScore,
-        reviewEnabled: data.reviewEnabled ?? true,
-        manualGrading: data.manualGrading ?? false,
-        maxAttempts: data.maxAttempts,
+        deletedAt: null,
       },
+      select: { id: true },
+    });
+
+    const lesson = await prisma.$transaction(async (tx) => {
+      if (conflict) {
+        const toShift = await tx.lesson.findMany({
+          where: {
+            coursePartId: data.coursePartId,
+            deletedAt: null,
+            sortOrder: { gte: data.sortOrder },
+          },
+          orderBy: { sortOrder: "desc" },
+          select: { id: true, sortOrder: true },
+        });
+
+        for (const item of toShift) {
+          await tx.lesson.update({
+            where: { id: item.id },
+            data: { sortOrder: item.sortOrder + 1 },
+          });
+        }
+      }
+
+      return tx.lesson.create({
+        data: {
+          coursePartId: data.coursePartId,
+          name: data.name ?? "",
+          description: data.description,
+          sortOrder: data.sortOrder || 0,
+          type: data.type || "text",
+          textContent: data.textContent,
+          videoId: data.videoId,
+          attachmentId: data.attachmentId,
+          points: data.points ?? 0,
+          durationSeconds: data.durationSeconds,
+          timeLimitSeconds: data.timeLimitSeconds,
+          passingScore: data.passingScore,
+          reviewEnabled: data.reviewEnabled ?? true,
+          manualGrading: data.manualGrading ?? false,
+          maxAttempts: data.maxAttempts,
+          publishedAt: data.published ? new Date() : null,
+        },
+      });
     });
 
     const full = await findLesson(lesson.id, true);

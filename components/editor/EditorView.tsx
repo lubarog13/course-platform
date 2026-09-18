@@ -13,6 +13,11 @@ export default function EditorView() {
     const searchParams = useSearchParams();
     const lessonId = searchParams?.get("lessonId") ?? -1;
     const type = searchParams?.get("type") ?? "";
+    const [userId, setuserId] = useState<number | null>(null);
+    //ToDo Получение userId из пользователя
+    useEffect(() => {
+        setuserId(1);
+    }, []);
     const defaultLesson: LessonFullDto = {
         id: -1,
         name: "",
@@ -20,8 +25,39 @@ export default function EditorView() {
         textContent: "",
         type: "text",
         video: null,
+        attachment: null,
+        attachmentId: null,
+        coursePartId: null,
+        sortOrder: 1,
+        videoId: null,
+        points: 0,
+        durationSeconds: null,
+        timeLimitSeconds: null,
+        passingScore: null,
+        reviewEnabled: true,
+        manualGrading: false,
+        maxAttempts: null,
+        publishedAt: null,
+        deletedAt: null,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        testQuestions: [],
     };
     
+    if (searchParams?.get("coursePartId")) {
+        try {
+            defaultLesson.coursePartId = parseInt(searchParams.get("coursePartId") ?? "0");
+        } catch (error) {
+            
+        }
+    }
+    if (searchParams.get("sortOrder")) {
+        try {
+            defaultLesson.sortOrder = parseInt(searchParams.get("sortOrder") ?? "0");
+        } catch (error) {
+        }
+    }
+
     const fetchLesson = async (signal: AbortSignal) => {
         if (lessonId === -1) {
             setLoading(false);
@@ -55,10 +91,13 @@ export default function EditorView() {
     if (error) {
         return <NotFound text={error} showHomeButton={true} />;
     }
+    if (userId === null) {
+        return <NotFound text="Этот раздел доступен только для преподавателей" />;
+    }
     return (
       <div className="py-2">
         {lesson ? (
-          <LessonEdit lesson={lesson} isNew={lessonId == -1} onSaved={setLesson} />
+          <LessonEdit lesson={lesson} isNew={lessonId == -1} onSaved={setLesson} userId={userId} />
         ) : (
           <NotFound text="Урок не найден" showHomeButton={true} />
         )}

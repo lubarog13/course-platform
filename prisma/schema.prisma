@@ -251,6 +251,7 @@ model Lesson {
   maxAttempts       Int?       @map("max_attempts")
   createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime   @updatedAt @map("updated_at") @db.Timestamptz
+  publishedAt     DateTime?    @map("published_at") @db.Timestamptz
   deletedAt         DateTime?  @map("deleted_at") @db.Timestamptz
 
   coursePart   CoursePart      @relation(fields: [coursePartId], references: [id], onDelete: Cascade)

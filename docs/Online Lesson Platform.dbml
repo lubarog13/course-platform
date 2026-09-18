@@ -198,6 +198,7 @@ Table Lesson {
   review_enabled boolean [not null, default: true, note: 'Разрешено ли студенту просматривать ответы на тест']
   manual_grading boolean [not null, default: false, note: 'Нужно ли проверять тест вручную']
   max_attempts integer [note: 'NULL = без ограничения пересдач']
+  published_at timestamptz [note: 'NULL = черновик']
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   deleted_at timestamptz

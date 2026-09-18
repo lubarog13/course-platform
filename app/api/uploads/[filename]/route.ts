@@ -42,6 +42,7 @@ const CONTENT_TYPES: Record<string, string> = {
   ".js": "application/javascript",
 };
 
+
 export async function GET(
   _request: Request,
   context: { params: Promise<{ filename: string }> },
@@ -52,7 +53,7 @@ export async function GET(
     const filePath = resolveUploadPath(filename);
 
     if (!filePath) {
-      return NextResponse.json({ error: "Invalid filename" }, { status: 400 });
+      return NextResponse.json({ error: "Не найден файл" }, { status: 400 });
     }
 
     const buffer = await fs.readFile(filePath);
@@ -73,10 +74,10 @@ export async function GET(
       "code" in error &&
       error.code === "ENOENT"
     ) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
+      return NextResponse.json({ error: "Файл не найден" }, { status: 404 });
     }
 
     console.error("Failed to serve upload:", error);
-    return NextResponse.json({ error: "Failed to serve file" }, { status: 500 });
+    return NextResponse.json({ error: "Не удалось загрузить файл" }, { status: 500 });
   }
 }

@@ -26,7 +26,8 @@ export type TestQuestionDto = TestQuestion & {
 
 export type LessonFullDto = Lesson & {
   testQuestions: TestQuestionDto[];
-  attachment?: FileModel,
+  attachment?: FileModel | null;
+  publishedAt?: Date | string | null;
   video?: {
     id: number;
     url: string;
@@ -134,6 +135,7 @@ export type LessonWriteData = {
   type?: LessonType;
   textContent?: string | null;
   videoId?: number | null;
+  attachmentId?: number | null;
   points?: number;
   durationSeconds?: number | null;
   timeLimitSeconds?: number | null;
@@ -141,6 +143,7 @@ export type LessonWriteData = {
   reviewEnabled?: boolean;
   manualGrading?: boolean;
   maxAttempts?: number | null;
+  published?: boolean;
 };
 
 export type VideoWriteData = {
@@ -160,6 +163,13 @@ export function parseLessonBody(
     mode === "create"
       ? asRequiredString(raw.name, "name")
       : asOptionalString(raw.name, "name") ?? undefined;
+  if (name && name.length > 1000) {
+    throw new Error("Название урока не может быть больше 1000 символов");
+  }
+  const description = asOptionalString(raw.description, "description");
+  if (description && description.length > 1000) {
+    throw new Error("Описание урока не может быть больше 1000 символов");
+  }
   const type =
     mode === "create"
       ? asLessonType(raw.type) ??
@@ -175,7 +185,10 @@ export function parseLessonBody(
     mode === "create"
       ? asRequiredInt(raw.sortOrder, "sortOrder", 0)
       : asOptionalInt(raw.sortOrder, "sortOrder", 0);
-
+  const textContent = asOptionalString(raw.textContent, "textContent");
+  if (textContent && textContent.length > 10000) {
+    throw new Error("Текст урока не может быть больше 10000 символов");
+  }
   const data: LessonWriteData = {
     ...(coursePartId !== undefined && coursePartId !== null
       ? { coursePartId }
@@ -192,16 +205,19 @@ export function parseLessonBody(
     ...(asOptionalId(raw.videoId, "videoId") !== undefined
       ? { videoId: asOptionalId(raw.videoId, "videoId") }
       : {}),
+    ...(asOptionalId(raw.attachmentId, "attachmentId") !== undefined
+      ? { attachmentId: asOptionalId(raw.attachmentId, "attachmentId") }
+      : {}),
     ...(asOptionalInt(raw.points, "points", 0) !== undefined &&
     asOptionalInt(raw.points, "points", 0) !== null
       ? { points: asOptionalInt(raw.points, "points", 0)! }
       : {}),
-    ...(asOptionalInt(raw.durationSeconds, "durationSeconds", 1) !== undefined
+    ...(asOptionalInt(raw.durationSeconds, "durationSeconds", 0) !== undefined
       ? {
           durationSeconds: asOptionalInt(
             raw.durationSeconds,
             "durationSeconds",
-            1,
+            0,
           ),
         }
       : {}),
@@ -225,6 +241,9 @@ export function parseLessonBody(
       : {}),
     ...(asOptionalInt(raw.maxAttempts, "maxAttempts", 1) !== undefined
       ? { maxAttempts: asOptionalInt(raw.maxAttempts, "maxAttempts", 1) }
+      : {}),
+    ...(asBoolean(raw.published, "published") !== undefined
+      ? { published: asBoolean(raw.published, "published") }
       : {}),
   };
 

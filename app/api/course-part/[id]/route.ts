@@ -14,7 +14,9 @@ type RouteParams = { params: Promise<{ id: string }> };
 export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
-    const part = await findCoursePart(parseNumericId(id));
+    const showDeleted = _request.nextUrl.searchParams.get("showDeleted") === "true";
+    const showDrafts = _request.nextUrl.searchParams.get("showDrafts") === "true";
+    const part = await findCoursePart(parseNumericId(id), showDeleted, showDrafts);
     if (!part) {
       return jsonError("Часть курса не найдена", 404);
     }

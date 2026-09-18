@@ -24,6 +24,7 @@ import {
   AdmonitionDirectiveDescriptor,
 } from "@mdxeditor/editor";
 import "@mdxeditor/editor/style.css";
+import { mdxEditorRu, uploadEditorImage } from "./mdxEditorRu";
 
 const lessonEditorPlugins = [
   toolbarPlugin({
@@ -35,10 +36,8 @@ const lessonEditorPlugins = [
   linkPlugin(),
   linkDialogPlugin(),
   imagePlugin({
-    imageAutocompleteSuggestions: [
-      "https://via.placeholder.com/640x360",
-      "https://via.placeholder.com/320x180",
-    ],
+    imageUploadHandler: uploadEditorImage,
+    imageAutocompleteSuggestions: [],
   }),
   tablePlugin(),
   thematicBreakPlugin(),
@@ -46,7 +45,7 @@ const lessonEditorPlugins = [
   codeBlockPlugin({ defaultCodeBlockLanguage: "txt" }),
   codeMirrorPlugin({
     codeBlockLanguages: {
-      txt: "Text",
+      txt: "Текст",
       js: "JavaScript",
       ts: "TypeScript",
       css: "CSS",
@@ -65,11 +64,13 @@ export default function InitializedMDXEditor({
   editorRef,
   className,
   contentEditableClassName,
+  translation = mdxEditorRu,
   ...props
 }: { editorRef: ForwardedRef<MDXEditorMethods> | null } & MDXEditorProps) {
   return (
     <MDXEditor
       plugins={lessonEditorPlugins}
+      translation={translation}
       className={[
         "lesson-mdx-editor rounded-xl border border-border bg-background",
         className,

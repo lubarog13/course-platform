@@ -18,7 +18,7 @@ const platforms: { value: VideoPlatform; label: string }[] = [
   { value: "other", label: "Другое" },
 ];
 
-export default function VideoEdit() {
+export default function VideoEdit({ onDurationChanged }: { onDurationChanged: () => void }) {
   const {
     register,
     control,
@@ -36,6 +36,7 @@ export default function VideoEdit() {
     if (file.originalName) {
       setValue("video.title", file.originalName, { shouldDirty: true });
     }
+    onDurationChanged();
   };
 
   return (
