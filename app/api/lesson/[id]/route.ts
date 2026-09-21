@@ -1,7 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { jsonError, parseNumericId, prismaErrorResponse } from "@/app/lib/api";
-import { findLesson, parseLessonBody } from "@/app/lib/lessons";
+import {
+  findLesson,
+  lessonRecordFields,
+  parseLessonBody,
+  replaceLessonQuestions,
+} from "@/app/lib/lessons";
 import { prisma } from "@/app/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -40,9 +45,33 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const data = parseLessonBody(body, "update");
-    await prisma.lesson.update({
-      where: { id: lessonId },
-      data,
+    const fields = lessonRecordFields(data);
+    const nextType = data.type ?? existing.type;
+
+    if (data.testQuestions !== undefined && nextType !== "test") {
+      return jsonError("Поле testQuestions допустимо только для type=test", 400);
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (Object.keys(fields).length > 0 || data.published !== undefined) {
+        await tx.lesson.update({
+          where: { id: lessonId },
+          data: {
+            ...fields,
+            ...(data.published !== undefined
+              ? { publishedAt: data.published ? new Date() : null }
+              : {}),
+          },
+        });
+      }
+
+      if (nextType === "test" && data.testQuestions !== undefined) {
+        await replaceLessonQuestions(lessonId, data.testQuestions, tx);
+      }
+
+      if (nextType !== "test" && existing.type === "test") {
+        await replaceLessonQuestions(lessonId, [], tx);
+      }
     });
 
     const full = await findLesson(lessonId, true);

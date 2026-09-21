@@ -1,4 +1,4 @@
-import type { Lesson, TestQuestion, TestQuestionOption, VideoPlatform, Video } from "@prisma/client";
+import type { Lesson, Prisma, TestQuestion, TestQuestionOption, VideoPlatform, Video } from "@prisma/client";
 import type { File as FileModel } from "@/app/lib/models";
 import {
   asBoolean,
@@ -127,6 +127,17 @@ function asLessonType(value: unknown): LessonType | undefined {
   return value as LessonType;
 }
 
+export type NestedTestQuestionWrite = {
+  id?: number;
+  question: string;
+  type: QuestionType;
+  score: number;
+  sortOrder: number;
+  required: boolean;
+  attachmentNeeded: boolean;
+  options: QuestionOptionWrite[];
+};
+
 export type LessonWriteData = {
   coursePartId?: number;
   name?: string;
@@ -144,7 +155,15 @@ export type LessonWriteData = {
   manualGrading?: boolean;
   maxAttempts?: number | null;
   published?: boolean;
+  testQuestions?: NestedTestQuestionWrite[];
 };
+
+export function lessonRecordFields(data: LessonWriteData) {
+  const fields = { ...data };
+  delete fields.testQuestions;
+  delete fields.published;
+  return fields;
+}
 
 export type VideoWriteData = {
   url: string;
@@ -245,6 +264,9 @@ export function parseLessonBody(
     ...(asBoolean(raw.published, "published") !== undefined
       ? { published: asBoolean(raw.published, "published") }
       : {}),
+    ...(raw.testQuestions !== undefined
+      ? { testQuestions: parseNestedTestQuestions(raw.testQuestions) }
+      : {}),
   };
 
   const effectiveType = data.type;
@@ -255,6 +277,14 @@ export function parseLessonBody(
     if (effectiveType === "video" && !data.videoId) {
       throw new Error("Для type=video нужно поле videoId");
     }
+  }
+
+  if (
+    data.testQuestions !== undefined &&
+    effectiveType !== undefined &&
+    effectiveType !== "test"
+  ) {
+    throw new Error("Поле testQuestions допустимо только для type=test");
   }
 
   return data;
@@ -302,6 +332,8 @@ export type TestQuestionWriteData = {
   type?: QuestionType;
   score?: number;
   sortOrder?: number;
+  required?: boolean;
+  attachmentNeeded?: boolean;
   options?: QuestionOptionWrite[];
 };
 
@@ -321,6 +353,163 @@ function parseOptions(value: unknown): QuestionOptionWrite[] | undefined {
       sortOrder: asRequiredInt(raw.sortOrder, `options[${index}].sortOrder`, 0),
     };
   });
+}
+
+function parseNestedTestQuestions(value: unknown): NestedTestQuestionWrite[] {
+  if (!Array.isArray(value)) {
+    throw new Error("Поле testQuestions должно быть массивом");
+  }
+
+  const questions = value.map((item, index) => {
+    if (item === null || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(`testQuestions[${index}] должен быть объектом`);
+    }
+    const raw = item as Record<string, unknown>;
+    const type =
+      asQuestionType(raw.type) ??
+      (() => {
+        throw new Error(`testQuestions[${index}].type обязательно`);
+      })();
+    const options = parseOptions(raw.options) ?? [];
+    const id = asOptionalId(raw.id, `testQuestions[${index}].id`);
+
+    if (type !== "text" && options.length === 0) {
+      throw new Error(`testQuestions[${index}]: для choice-вопроса нужны options`);
+    }
+    if (type === "text" && options.length > 0) {
+      throw new Error(`testQuestions[${index}]: для type=text options не нужны`);
+    }
+    if (type !== "text" && !options.some((option) => option.isCorrect)) {
+      throw new Error(
+        `testQuestions[${index}]: нужен хотя бы один правильный вариант`,
+      );
+    }
+
+    return {
+      ...(id !== undefined && id !== null ? { id } : {}),
+      question: asRequiredString(raw.question, `testQuestions[${index}].question`),
+      type,
+      score: asOptionalInt(raw.score, `testQuestions[${index}].score`, 0) ?? 1,
+      sortOrder: asRequiredInt(
+        raw.sortOrder,
+        `testQuestions[${index}].sortOrder`,
+        0,
+      ),
+      required: asBoolean(raw.required, `testQuestions[${index}].required`) ?? true,
+      attachmentNeeded:
+        asBoolean(
+          raw.attachmentNeeded,
+          `testQuestions[${index}].attachmentNeeded`,
+        ) ?? false,
+      options: type === "text" ? [] : options,
+    } satisfies NestedTestQuestionWrite;
+  });
+
+  const sortOrders = questions.map((question) => question.sortOrder);
+  if (new Set(sortOrders).size !== sortOrders.length) {
+    throw new Error("У вопросов sortOrder должен быть уникальным");
+  }
+
+  return questions;
+}
+
+type TxClient = Prisma.TransactionClient;
+
+export async function replaceLessonQuestions(
+  lessonId: number,
+  questions: NestedTestQuestionWrite[],
+  tx: TxClient = prisma,
+) {
+  const existing = await tx.testQuestion.findMany({
+    where: { lessonId },
+    select: { id: true },
+  });
+  const existingIds = new Set(existing.map((question) => question.id));
+
+  const toUpdate: NestedTestQuestionWrite[] = [];
+  const toCreate: NestedTestQuestionWrite[] = [];
+  const keptIds = new Set<number>();
+
+  for (const question of questions) {
+    if (question.id !== undefined && existingIds.has(question.id)) {
+      toUpdate.push(question);
+      keptIds.add(question.id);
+    } else {
+      toCreate.push(question);
+    }
+  }
+
+  const toDelete = existing
+    .map((question) => question.id)
+    .filter((id) => !keptIds.has(id));
+
+  if (toDelete.length > 0) {
+    await tx.testQuestionOption.deleteMany({
+      where: { questionId: { in: toDelete } },
+    });
+    await tx.testQuestion.deleteMany({
+      where: { id: { in: toDelete } },
+    });
+  }
+
+  for (const question of toUpdate) {
+    await tx.testQuestion.update({
+      where: { id: question.id! },
+      data: { sortOrder: -(question.id! + 100_000) },
+    });
+  }
+
+  for (const question of toUpdate) {
+    await tx.testQuestion.update({
+      where: { id: question.id! },
+      data: {
+        question: question.question,
+        type: question.type,
+        score: question.score,
+        sortOrder: question.sortOrder,
+        required: question.required,
+        attachmentNeeded: question.attachmentNeeded,
+      },
+    });
+    await tx.testQuestionOption.deleteMany({
+      where: { questionId: question.id! },
+    });
+    if (question.options.length > 0) {
+      await tx.testQuestionOption.createMany({
+        data: question.options.map((option) => ({
+          questionId: question.id!,
+          text: option.text,
+          isCorrect: option.isCorrect,
+          sortOrder: option.sortOrder,
+        })),
+      });
+    }
+  }
+
+  for (const question of toCreate) {
+    await tx.testQuestion.create({
+      data: {
+        lessonId,
+        question: question.question,
+        type: question.type,
+        score: question.score,
+        sortOrder: question.sortOrder,
+        required: question.required,
+        attachmentNeeded: question.attachmentNeeded,
+        ...(question.options.length > 0
+          ? {
+              options: {
+                create: question.options.map((option) => ({
+                  text: option.text,
+                  isCorrect: option.isCorrect,
+                  sortOrder: option.sortOrder,
+                })),
+              },
+            }
+          : {}),
+      },
+    });
+  }
 }
 
 export function parseTestQuestionBody(
@@ -349,6 +538,8 @@ export function parseTestQuestionBody(
       : asOptionalInt(raw.sortOrder, "sortOrder", 0);
   const score = asOptionalInt(raw.score, "score", 1);
   const options = parseOptions(raw.options);
+  const required = asBoolean(raw.required, "required");
+  const attachmentNeeded = asBoolean(raw.attachmentNeeded, "attachmentNeeded");
 
   const effectiveType = type;
   if (
@@ -377,6 +568,8 @@ export function parseTestQuestionBody(
     ...(type !== undefined ? { type } : {}),
     ...(score !== undefined && score !== null ? { score } : {}),
     ...(sortOrder !== undefined && sortOrder !== null ? { sortOrder } : {}),
+    ...(required !== undefined ? { required } : {}),
+    ...(attachmentNeeded !== undefined ? { attachmentNeeded } : {}),
     ...(options !== undefined ? { options } : {}),
   };
 }

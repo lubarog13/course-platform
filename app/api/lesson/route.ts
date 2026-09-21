@@ -1,7 +1,12 @@
 import { type NextRequest, NextResponse } from "next/server";
 
-import { jsonError, parseNumericId, prismaErrorResponse } from "@/app/lib/api";
-import { findLesson, listLessons, parseLessonBody } from "@/app/lib/lessons";
+import { jsonError, prismaErrorResponse } from "@/app/lib/api";
+import {
+  findLesson,
+  listLessons,
+  parseLessonBody,
+  replaceLessonQuestions,
+} from "@/app/lib/lessons";
 import { prisma } from "@/app/lib/prisma";
 
 export const dynamic = "force-dynamic";
@@ -71,13 +76,13 @@ export async function POST(request: NextRequest) {
         }
       }
 
-      return tx.lesson.create({
+      const created = await tx.lesson.create({
         data: {
-          coursePartId: data.coursePartId,
-          name: data.name ?? "",
+          coursePartId: data.coursePartId!,
+          name: data.name!,
           description: data.description,
-          sortOrder: data.sortOrder || 0,
-          type: data.type || "text",
+          sortOrder: data.sortOrder!,
+          type: data.type!,
           textContent: data.textContent,
           videoId: data.videoId,
           attachmentId: data.attachmentId,
@@ -91,6 +96,12 @@ export async function POST(request: NextRequest) {
           publishedAt: data.published ? new Date() : null,
         },
       });
+
+      if (data.type === "test" && data.testQuestions) {
+        await replaceLessonQuestions(created.id, data.testQuestions, tx);
+      }
+
+      return created;
     });
 
     const full = await findLesson(lesson.id, true);

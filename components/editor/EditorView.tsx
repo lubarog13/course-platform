@@ -69,7 +69,7 @@ export default function EditorView() {
             setError("Нечего редактировать");
             return;
         }
-        await fetch(`/api/lesson/${lessonId}`)
+        await fetch(`/api/lesson/${lessonId}?includeCorrect=1`)
             .then(res => res.json())
             .then(data => {
                 setLesson(data);

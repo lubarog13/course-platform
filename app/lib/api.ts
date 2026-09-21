@@ -17,7 +17,7 @@ export function prismaErrorResponse(error: unknown, entity = "Запись") {
       return jsonError(`${entity} не найдена`, 404);
     }
   }
-  if (error instanceof Error && (error.message.startsWith("Поле") || error.message.startsWith("Ожидается"))) {
+  if (error instanceof Error && (error.message.startsWith("Поле") || error.message.startsWith("Ожидается") || error.message.startsWith("testQuestions") || error.message.startsWith("У вопросов") || error.message.startsWith("Для"))) {
     return jsonError(error.message, 400);
   }
   console.error(error);

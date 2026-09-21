@@ -5,7 +5,7 @@ import type { MDXEditorMethods } from "@mdxeditor/editor";
 import { FormProvider, useForm, useWatch, type Resolver, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 
-import type { LessonFullDto } from "@/app/lib/lessons";
+import type { LessonFullDto, TestQuestionDto } from "@/app/lib/lessons";
 import type { File as FileModel, Video } from "@/app/lib/models";
 import { CoursePartExtendedDto } from "@/app/lib/courseParts";
 import { Kbd } from "@/components/ui/kbd";
@@ -18,6 +18,8 @@ import { Badge } from "@/components/ui/badge";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import VideoEdit from "../editor/VideoEdit";
+import { isSortable } from "@dnd-kit/react/sortable";
+
 import {
   lessonFormSchema,
   toLessonFormValues,
@@ -25,7 +27,10 @@ import {
 } from "./lessonForm";
 import { useHotkeys } from "react-hotkeys-hook";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
-import { FileIcon, XIcon } from "lucide-react";
+import { FileIcon, PlusIcon, XIcon } from "lucide-react";
+import TestQuestionEdit from "./TestQuestionEdit";
+import { DragDropProvider } from "@dnd-kit/react";
+
 
 type LessonEditProps = {
   lesson: LessonFullDto;
@@ -76,7 +81,9 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
   const openedLessonId = useRef<number | null>(null);
   const [courseParts, setCourseParts] = useState<CoursePartExtendedDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [testQuestions, setTestQuestions] = useState<TestQuestionDto[]>(lesson.testQuestions || []);
 
+  const [questionsChanged, setQuestionsChanged] = useState(false);
   useEffect(() => {
     if (openedLessonId.current === lesson.id) return;
     openedLessonId.current = lesson.id;
@@ -84,6 +91,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
     reset(values);
     editorRef.current?.setMarkdown(values.textContent);
     setPublishedAt(values.publishedAt);
+    setTestQuestions(lesson.testQuestions);
     setSavedAt(null);
     setError(null);
   }, [lesson, reset]);
@@ -151,9 +159,51 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
     return body as Video;
   };
 
+  const onTestQuestionSaved = (question: TestQuestionDto) => {
+    setTestQuestions(testQuestions.map(q => q.id === question.id ? question : q));
+    setQuestionsChanged(true);
+  };
+
+  const onTestQuestionDeleted = (question: TestQuestionDto) => {
+    setTestQuestions(testQuestions.filter(q => q.id !== question.id));
+    if (testQuestions.length === 0) {
+      setQuestionsChanged(false);
+    } else {
+      setQuestionsChanged(true);
+    }
+  };
+
+  const reorderQuestions = (questions: TestQuestionDto[], from: number, to: number) => {
+    if (from === to || from < 0 || to < 0) return questions;
+    const next = [...questions];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    return next.map((question, index) => ({ ...question, sortOrder: index + 1 }));
+  };
+
+  const onTestQuestionAdd = () => {
+    const newQuestion = {
+      id: -Date.now(),
+      question: "",
+      type: "single_choice",
+      score: 1,
+      sortOrder: testQuestions.length + 1,
+      required: true,
+      attachmentNeeded: false,
+      lessonId: lesson.id,
+      options: [],
+    } as TestQuestionDto;
+    setTestQuestions([...testQuestions, newQuestion]);
+  };
+
   const onSubmit: SubmitHandler<LessonFormValues> = async (values) => {
     setSaving(true);
     setError(null);
+    if (type === "test" && !testQuestions.length) {
+      setError("Необходимо добавить хотя бы один вопрос");
+      setSaving(false);
+      return;
+    }
     try {
       const markdown = syncMarkdown(false);
       syncDuration({ ...values, textContent: markdown }, false);
@@ -182,6 +232,27 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
             durationSeconds,
             attachmentId: values.attachment?.id ?? null,
             ...(values.type === "video" ? { videoId } : {}),
+            ...(values.type === "test"
+              ? {
+                  testQuestions: testQuestions.map((question) => ({
+                    ...(question.id > 0 ? { id: question.id } : {}),
+                    question: question.question,
+                    type: question.type,
+                    score: question.score,
+                    sortOrder: question.sortOrder,
+                    required: question.required,
+                    attachmentNeeded: question.attachmentNeeded,
+                    options:
+                      question.type === "text"
+                        ? []
+                        : question.options.map((option) => ({
+                            text: option.text,
+                            isCorrect: option.isCorrect ?? false,
+                            sortOrder: option.sortOrder,
+                          })),
+                  })),
+                }
+              : {}),
           }),
         },
       );
@@ -197,6 +268,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
       reset(formValues);
       editorRef.current?.setMarkdown(formValues.textContent);
       setPublishedAt(formValues.publishedAt);
+      setTestQuestions(saved.testQuestions);
       setSavedAt(new Date());
       onSaved?.(saved);
     } catch (err) {
@@ -245,7 +317,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
             </p>
           </div>
           <div className="flex items-center gap-2">
-          <Button type="submit" disabled={saving || !isDirty}>
+          <Button type="submit" disabled={(saving || !isDirty) && (type === "test" && testQuestions.length === 0)}>
             {saving ? "Сохранение…" : "Сохранить"}
           </Button>
           {savedAt && !isDirty && (
@@ -465,6 +537,31 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
             <VideoEdit
               onDurationChanged={() => syncDuration(getValues(), false)}
             />
+          )}
+          {type === "test" && (
+            <DragDropProvider
+                onDragEnd={(event) => {
+                  if (event.canceled) return;
+                  const { source } = event.operation;
+                  if (!isSortable(source)) return;
+                  setTestQuestions((current) =>
+                    reorderQuestions(current, source.initialIndex, source.index),
+                  );
+                }}
+              >
+            <div className="flex flex-col gap-4">
+              {testQuestions.map((question, index) => (
+                <TestQuestionEdit
+                  key={question.id}
+                  index={index}
+                  question={question}
+                  onSaved={onTestQuestionSaved}
+                  onDeleted={onTestQuestionDeleted}
+                />
+              ))}
+              <Button type="button" onClick={onTestQuestionAdd}>Добавить вопрос <PlusIcon className="size-4" /></Button>
+            </div>
+            </DragDropProvider>
           )}
         </div>
       </form>
