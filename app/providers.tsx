@@ -1,5 +1,6 @@
 import { ThemeProvider } from "@/components/providers/theme-provider"
 import { ReCaptchaProvider } from "next-recaptcha-v3";
+import { SessionProvider } from "next-auth/react";
 
 
 export function Providers({
@@ -15,7 +16,9 @@ export function Providers({
           disableTransitionOnChange
           >
             <ReCaptchaProvider useEnterprise>
-              {children}
+              <SessionProvider>
+                {children}
+              </SessionProvider>
             </ReCaptchaProvider>
           </ThemeProvider>
     );

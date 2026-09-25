@@ -157,6 +157,7 @@ export type CourseListQuery = {
   search?: string | null;
   ratingFrom?: number | null;
   needEnrollment?: boolean | null;
+  enrolled?: number | boolean | null;
 };
 
 function parseIntParam(value: string | null | undefined, fallback: number, min: number, max: number) {
@@ -223,6 +224,7 @@ export function buildCourseListArgs(query: CourseListQuery) {
       : {}),
     ...(query.ratingFrom ? { rating: { gte: query.ratingFrom } } : {}),
     ...(query.needEnrollment !== undefined && query.needEnrollment !== null ? { needEnrollment: query.needEnrollment } : {}),
+    ...(query.enrolled ? { enrollments: { some: { userId: query.enrolled } } } : {}),
   };
 
   return { where, limit, offset, page, sort, order };

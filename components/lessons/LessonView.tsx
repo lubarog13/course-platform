@@ -13,13 +13,14 @@ import Loading from "../layout/loading";
 import { useRouter } from "next/navigation";
 
 type LessonViewProps = {
+    canEdit: boolean;
     lessonId: number;
     prevLesson?: LessonDto,
     nextLesson? : LessonDto,
     onArrowClick: (lessonId: number) => void;
 }
 
-export default function LessonView({lessonId, prevLesson, nextLesson, onArrowClick}: LessonViewProps) {
+export default function LessonView({lessonId, prevLesson, nextLesson, canEdit, onArrowClick}: LessonViewProps) {
     const [lesson, setLesson] = useState<LessonFullDto | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
@@ -97,9 +98,9 @@ export default function LessonView({lessonId, prevLesson, nextLesson, onArrowCli
                 }
                 {lesson.type === "video" && <VideoView lesson={lesson} />}
             
-            <Button variant="secondary" size="icon-lg" className="absolute right-4 top-4 cursor-pointer rounded-full" onClick={handleEdit}>
+            {canEdit && <Button variant="secondary" size="icon-lg" className="absolute right-4 top-4 cursor-pointer rounded-full" onClick={handleEdit}>
                 <EditIcon className="w-10 h-10" />
-                </Button>
+                </Button>}
             </div>
             
             </div>

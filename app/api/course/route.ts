@@ -9,12 +9,17 @@ import {
   serializeCourse,
 } from "@/app/lib/courses";
 import { prisma } from "@/app/lib/prisma";
+import { auth } from "@/auth";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
-
+  const session = await auth(); 
+  const forUser = params.get("enrolled") ? params.get("enrolled") == '1' : null;
+  if (forUser && !session?.user?.id) {
+    return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+  }
   try {
     const result = await listCourses({
       published: params.get("published"),
@@ -29,6 +34,7 @@ export async function GET(request: NextRequest) {
       instructor: params.get("instructor"),
       tags: params.get("tags")?.split(",") ?? [],
       search: params.get("search"),
+      enrolled: params.get("enrolled") ? Number(session?.user?.id) : null,
     });
 
     return NextResponse.json(result);

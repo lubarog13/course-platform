@@ -10,7 +10,7 @@ export default function RegisterPage() {
       </p>
       <div className="w-full">
         <Suspense>
-          <SignupForm />
+          <SignupForm editMode={false} />
         </Suspense>
       </div>
     </div>

@@ -3,6 +3,7 @@
 import { Input } from "@/components/ui/input";
 import { FieldGroup, Field, FieldLabel } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
+import Link from "next/link";
 import { signInSchema } from "@/app/lib/auth/form";
 import { loginAction } from "@/app/lib/auth/actions";
 import { useForm } from "react-hook-form";
@@ -10,7 +11,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, LogInIcon } from "lucide-react";
 
 export function LoginForm() {
   const router = useRouter();
@@ -69,9 +70,17 @@ export function LoginForm() {
             />
           </Field>
         </FieldGroup>
-        <Button disabled={isLoading} type="submit">
+        <div className="flex flex-col gap-3 align-center flex-wrap">
+        <Button disabled={isLoading} type="submit" className="min-h-10">
           Войти {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
         </Button>
+        <Link href="/register" className="text-sm text-gray-500">
+          Нет аккаунта? <span className="text-gray-800 dark:text-gray-200 text-md">Зарегистрироваться</span>
+        </Link>
+        <Link href="/forgot-password" className="text-sm text-gray-500">
+          Забыли пароль? <span className="text-gray-800 dark:text-gray-200 text-md">Восстановить</span>
+        </Link>
+        </div>
       </form>
     </>
   );

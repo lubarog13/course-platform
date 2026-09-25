@@ -23,6 +23,7 @@ export default function CourseView() {
     const [error, setError] = useState<string | null>(null);
     const [isDesktop, setIsDesktop] = useState(true);
     const [isOpen, setIsOpen] = useState(false);
+    const [canEdit, setCanEdit] = useState(false);
     const [currentLessonIndex, setCurrentLessonIndex] = useState<number>(0);
     const [lessonsList, setLessonsList] = useState<LessonDto[]>([]);
     useEffect(() => {
@@ -39,6 +40,7 @@ export default function CourseView() {
             .then(data => {
                 setCourseName(data.courseName);
                 setCourseParts(data.parts);
+                setCanEdit(data.canEdit);
                 const lessons = data.parts.flatMap((part: CoursePartDto) => part.lessons);
                 setLessonsList(lessons);
                 if (searchParams && searchParams.get('lessonId')) {
@@ -83,7 +85,7 @@ export default function CourseView() {
                 </DrawerHeader>
                 <DrawerContent>
                     <div className="flex-1 overflow-y-auto overflow-x-hidden p-4">
-                    <CourseSidebar courseParts={courseParts} courseName={courseName ?? ""} openedLessonId={lessonsList[currentLessonIndex].id} onLessonClick={selectLesson} />
+                    <CourseSidebar  courseParts={courseParts} courseName={courseName ?? ""} openedLessonId={lessonsList[currentLessonIndex].id} canEdit={canEdit} onLessonClick={selectLesson} />
                     </div>
                     <DrawerFooter>
                         <DrawerClose render={<Button className="cursor-pointer bg-black text-white hover:bg-gray-800 dark:hover:bg-gray-200 dark:bg-white dark:text-black">
@@ -93,9 +95,9 @@ export default function CourseView() {
                 </DrawerContent>
             </DrawerContent>
         </Drawer>)}
-        {isDesktop && (<CourseSidebar courseParts={courseParts} courseName={courseName ?? ""} openedLessonId={lessonsList[currentLessonIndex].id} onLessonClick={selectLesson} />)}
+        {isDesktop && (<CourseSidebar courseParts={courseParts} courseName={courseName ?? ""} openedLessonId={lessonsList[currentLessonIndex].id} canEdit={canEdit} onLessonClick={selectLesson} />)}
         <div className='flex-1'>
-            <LessonView lessonId={lessonsList[currentLessonIndex].id} prevLesson={currentLessonIndex > 0 ? lessonsList[currentLessonIndex - 1] : undefined} nextLesson={currentLessonIndex < lessonsList.length - 1 ? lessonsList[currentLessonIndex + 1] : undefined} onArrowClick={selectLesson} />
+            <LessonView canEdit={canEdit} lessonId={lessonsList[currentLessonIndex].id} prevLesson={currentLessonIndex > 0 ? lessonsList[currentLessonIndex - 1] : undefined} nextLesson={currentLessonIndex < lessonsList.length - 1 ? lessonsList[currentLessonIndex + 1] : undefined} onArrowClick={selectLesson} />
             </div>
     </div>;
 }

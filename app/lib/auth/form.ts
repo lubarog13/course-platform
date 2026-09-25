@@ -13,6 +13,12 @@ export const signUpSchema = object({
   surname: z.string({error: "Фамилия не может быть пустым"}).min(1, "Фамилия не может быть пустым"),
   patronymic: z.string().nullable(),
   phone: z.string().nullable(),
+  userDetails: object({
+    position: z.string().nullable(),
+    achievements: z.array(z.string()).nullable(),
+  }).nullable(),
+  role: z.enum(["student", "teacher", "admin"]),
+
 }).refine((data) => {
   if (data.patronymic) {
     return data.patronymic.length > 0;

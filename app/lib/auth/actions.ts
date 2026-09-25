@@ -5,6 +5,7 @@ import { signIn, signOut } from "@/auth";
 import { signInSchema } from "@/app/lib/auth/form";
 import { Prisma, User } from "@prisma/client";
 import { prisma } from "@/app/lib/prisma";
+import { UserDetails } from "@/app/lib/models";
 import { hashPassword } from "@/app/lib/auth/password";
 export type SignUpParams = {
   email: string;
@@ -13,6 +14,17 @@ export type SignUpParams = {
   surname: string;
   patronymic: string | null;
   phone: string | null;
+};
+
+export type UpdateUserParams = {
+  id: number;
+  email: string;
+  name: string;
+  surname: string;
+  patronymic: string | null;
+  phone: string | null;
+  userDetails: UserDetails | undefined;
+  role: "student" | "teacher" | "admin";
 };
 
 export async function loginAction(input: {
@@ -82,6 +94,18 @@ export async function signUpAction(params: SignUpParams): Promise<{ ok: true } |
         return { ok: false, error: "Не удалось зарегистрироваться" };
       }
     }
+    throw error;
+  }
+}
+
+export async function updateUserAction(params: UpdateUserParams): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    const user = await prisma.user.update({
+      where: { id: params.id },
+      data: params,
+    });
+    return { ok: true };
+  } catch (error) {
     throw error;
   }
 }

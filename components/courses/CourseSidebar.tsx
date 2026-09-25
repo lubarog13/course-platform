@@ -13,7 +13,7 @@ import {
     ItemTitle,
   } from "@/components/ui/item";
 import { BookOpenText, SquarePlay, PenLine, CircleDashedCheck } from "lucide-react";
-export default function CourseSidebar({courseParts, courseName, openedLessonId, onLessonClick}: {courseParts: CoursePartDto[], courseName: string, openedLessonId: number | null, onLessonClick: (lessonId: number) => void}) {
+export default function CourseSidebar({courseParts, courseName, openedLessonId, canEdit, onLessonClick}: {courseParts: CoursePartDto[], courseName: string, openedLessonId: number | null, canEdit: boolean, onLessonClick: (lessonId: number) => void}) {
     const [openedIndex, setOpenedIndex] = useState<number | null>(null);
     const router = useRouter();
     const openLessonChange = () => {
@@ -76,6 +76,7 @@ export default function CourseSidebar({courseParts, courseName, openedLessonId, 
                                             </ItemContent>
                                         </Item>
                                     ))}
+                                    {canEdit && (
                                     <Item className="cursor-pointer items-start bg-gray-100 dark:bg-gray-800 rounded-lg p-2" onClick={() => handleAddLesson(coursePart.id, coursePart.lessons.length + 1)}>
                                         <ItemMedia variant="icon">
                                             <PlusCircle className="w-10 h-10" />
@@ -84,6 +85,7 @@ export default function CourseSidebar({courseParts, courseName, openedLessonId, 
                                             <ItemTitle>Добавить урок</ItemTitle>
                                         </ItemContent>
                                     </Item>
+                                    )}
                                 </div>
                             </CollapsibleContent>
                         </Collapsible>

@@ -1,7 +1,9 @@
 import { ThemeToggle } from "../base/ThemeToggle";
 import { Button } from "../ui/button";
-import { CircleUserRound, Bell, LayoutDashboard, UserGroup  } from "lucide-react";
+import { CircleUserRound, Bell, LayoutDashboard, UserGroup, User as UserIcon, DockIcon, SettingsIcon, FileTextIcon, LogOutIcon, LogInIcon } from "lucide-react";
 import Link from "next/link";
+import { UserMenu } from "./usermenu";
+
 
 export default function Header() {
   return (
@@ -14,7 +16,7 @@ export default function Header() {
           <LayoutDashboard className="w-4 h-4" /> Все курсы
         </Button>
         </Link>
-        <Link href="/courses?enrolled=true">
+        <Link href="/courses/user">
         <Button variant="ghost" className="text-sm sm:text-base text-[0px]">
           <UserGroup className="w-4 h-4" /> Мои курсы
         </Button>
@@ -27,11 +29,7 @@ export default function Header() {
           <Bell className="w-4 h-4" />
         </Button>
         </Link>
-        <Link href="/profile">
-        <Button variant="ghost" size='icon'>
-          <CircleUserRound className="w-4 h-4" />
-        </Button>
-        </Link>
+        <UserMenu />
         </div>
       </div>
     </header>

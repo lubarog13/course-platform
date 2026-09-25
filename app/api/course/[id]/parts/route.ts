@@ -2,10 +2,14 @@ import { NextResponse, NextRequest } from "next/server";
 import { prisma } from "@/app/lib/prisma";
 type RouteParams = { params: Promise<{ id: string }> };
 import { coursePartsFromSql } from "@/app/lib/courseParts";
-
+import { auth } from "@/auth";
 export async function GET(_request: NextRequest, { params }: RouteParams) {
     const { id } = await params;
-    console.log(id);
+    const session = await auth();
+    if (!session?.user?.id) {
+        return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+    }
+    const currentUser = Number(session.user.id);
     const parts = await prisma.$queryRaw`SELECT course_id, "Course"."name" as course_name, "CoursePart".id as course_part_id, "CoursePart".name, "CoursePart".description, "CoursePart".sort_order, "CoursePart".created_at, 
     "CoursePart".updated_at, "CoursePart".deleted_at, "Lesson".id as lesson_id, "Lesson"."name" as lesson_name, "Lesson"."description" as lesson_description, "Lesson"."sort_order" as lesson_sort_order, "Lesson"."type" as lesson_type, 
     "Lesson"."points" as lesson_points, "Lesson"."duration_seconds" as lesson_duration_seconds
@@ -13,7 +17,14 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
      WHERE "Course"."slug" = ${id}
     GROUP BY "Course"."id", "CoursePart"."id", "Lesson"."id"
     ORDER BY "CoursePart"."sort_order"`;
-    console.log(parts);
+    const canEdit = await prisma.course.findFirst({
+        where: {
+            slug: id,
+            instructors: {some: {userId: currentUser}} 
+        }
+    });
     return NextResponse.json({courseName: (parts as any)[0].course_name,
-        parts: coursePartsFromSql(parts as any[])});
+        parts: coursePartsFromSql(parts as any[]),
+        canEdit: canEdit ? true : false
+    });
 }

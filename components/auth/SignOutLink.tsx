@@ -13,5 +13,5 @@ export function SignOutLink({ children, className }: { children?: React.ReactNod
     router.push("/login");
   };
 
-  return <Button onClick={handleSignOut} variant="link" className={className}>{children? children : "Выйти"}</Button>;
+  return <div className="cursor-pointer p-2" onClick={handleSignOut}>{children? children : "Выйти"}</div>;
 }

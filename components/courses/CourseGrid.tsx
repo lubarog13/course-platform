@@ -65,9 +65,9 @@ export function CourseGrid({ forceRefresh = false, category = undefined }: {forc
       delete resultFilters.tag;
     }
     const localQueryParams = Object.fromEntries(Object.entries(resultFilters).filter(([key, value]) => value !== null && value !== undefined)) as Record<string, string>;
-    console.log("updateFilters", localQueryParams);
+    delete localQueryParams.enrolled;
     if (forceRefresh && !refresh) return;
-    router.replace(`/courses${category ? `/${category}` : ''}?${new URLSearchParams(localQueryParams).toString()}`);
+    router.replace(`${window.location.pathname}?${new URLSearchParams(localQueryParams).toString()}`);
     if (refresh) {
       router.refresh();
     }
@@ -93,6 +93,7 @@ export function CourseGrid({ forceRefresh = false, category = undefined }: {forc
     const search = newQueryParams.get("search") ?? undefined;
     const ratingFrom = newQueryParams.get("ratingFrom") ?? undefined;
     const needEnrollment = newQueryParams.get("needEnrollment") ?? undefined;
+    const enrolled = window.location.pathname === "/courses/user" ? true : undefined;
     if (queryPage!==page) {
       setPage(Number(queryPage));
     }
@@ -110,6 +111,7 @@ export function CourseGrid({ forceRefresh = false, category = undefined }: {forc
       search,
       ratingFrom: ratingFrom ? Number(ratingFrom) : null,
       needEnrollment: needEnrollment === "1",
+      enrolled: enrolled,
     });
   }
 
@@ -129,7 +131,7 @@ export function CourseGrid({ forceRefresh = false, category = undefined }: {forc
     if (filters.search) params.set("search", filters.search);
     if (filters.ratingFrom) params.set("ratingFrom", filters.ratingFrom.toString());
     if (filters.needEnrollment) params.set("needEnrollment", filters.needEnrollment.toString());
-    console.log("loadData", params.toString());
+    if (window.location.pathname === "/courses/user") params.set("enrolled", "1");
     const controller = new AbortController();
     setLoading(true);
     setError(null);
@@ -137,6 +139,9 @@ export function CourseGrid({ forceRefresh = false, category = undefined }: {forc
     fetch(`/api/course?${params}`, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) {
+          if (response.status === 401) {
+            router.push("/login");
+          }
           const body = (await response.json().catch(() => null)) as {
             error?: string;
           } | null;

@@ -4,6 +4,7 @@ import { File as PrismaFile } from "@prisma/client";
 import path from "path";
 import { getUploadsDir, } from "@/app/lib/uploads";
 import fs from "node:fs/promises";
+import {auth} from "@/auth";
 
 // Возможные MIME-типы файлов для File (js):
 const FILE_MIME_TYPES = [
@@ -76,9 +77,11 @@ export async function POST(request: NextRequest) {
 
     const buffer = Buffer.from(await fileData.arrayBuffer());
     await fs.writeFile(path.join(imagesDir, filename), buffer);
-
-    // TODO: get current user id
-    const currentUser = 1;
+    const session = await auth();
+    if (!session?.user?.id) {
+        return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+      }
+      const currentUser = Number(session.user.id);
     const fileRecord = await prisma.file.create({
         data: {
             originalName: filename + "." + extension,
