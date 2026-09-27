@@ -275,6 +275,7 @@ model TestQuestion {
   question  String       @db.Text
   type      QuestionType
   score     Int          @default(1)
+  textAnswer String? @map("text_answer") @db.Text
   sortOrder Int          @map("sort_order")
   required Boolean    @default(true) @map("required")
   attachmentNeeded Boolean    @default(false) @map("attachment_needed")

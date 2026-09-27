@@ -16,6 +16,7 @@ export const testQuestionFormSchema = z.object({
     sortOrder: z.number().min(0, "Порядок должен быть больше 0"),
     required: z.boolean().default(true),
     attachmentNeeded: z.boolean().default(false),
+    textAnswer: z.string().optional(),
     lessonId: z.number().int().positive("Выберите урок"),
     score: z.number().min(0, "Баллы должны быть больше или равен 0"),
 });
@@ -33,6 +34,7 @@ export function toTestQuestionFormValues(question: TestQuestion): TestQuestionFo
         attachmentNeeded: question.attachmentNeeded,
         lessonId: question.lessonId,
         score: question.score,
+        textAnswer: question.textAnswer ?? null,
     };
 }
 
@@ -54,7 +56,7 @@ export function toTestQuestion(values: TestQuestionFormValues, id: number): Test
         attachmentNeeded: values.attachmentNeeded,
         lessonId: values.lessonId,
         score: values.score,
-
+        textAnswer: values.textAnswer ?? null,
     };
 }
 
@@ -68,6 +70,7 @@ export function toTestQuestionDto(values: TestQuestionFormValues, id: number, op
         attachmentNeeded: values.attachmentNeeded,
         lessonId: values.lessonId,
         score: values.score,
+        textAnswer: values.textAnswer ?? null,
         options: options,
     };
 }

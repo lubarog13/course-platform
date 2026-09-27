@@ -2,7 +2,7 @@ import { type NextRequest, NextResponse } from "next/server";
 
 import { auth } from "@/auth";
 import { jsonError, parseNumericId, prismaErrorResponse } from "@/app/lib/api";
-import { startTestAttempt } from "@/app/lib/lessons";
+import { findTestAttempt, findTestAttemptsByLessonId, startTestAttempt } from "@/app/lib/lessons";
 
 export const dynamic = "force-dynamic";
 
@@ -34,5 +34,25 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
       }
     }
     return prismaErrorResponse(error, "Попытка теста");
+  }
+}
+
+export async function GET(_request: NextRequest, { params }: RouteParams) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id) {
+      return jsonError("Не авторизован", 401);
+    }
+
+    const { id } = await params;
+    const lessonId = parseNumericId(id);
+    const userId = Number(session.user.id);
+    const attempts = await findTestAttemptsByLessonId(lessonId, userId);
+    if (!attempts || attempts.length === 0) {
+      return jsonError("Попытки не найдены", 404);
+    }
+    return NextResponse.json(attempts, { status: 200 });
+  } catch (error) {
+    return prismaErrorResponse(error, "Попытки теста");
   }
 }

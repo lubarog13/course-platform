@@ -63,6 +63,8 @@ export async function POST(request: NextRequest) {
         question: data.question,
         type: data.type,
         score: data.score ?? 1,
+        textAnswer: data.textAnswer ?? null,
+        attachmentNeeded: data.attachmentNeeded ?? false,
         sortOrder: data.sortOrder,
         ...(data.options?.length
           ? {

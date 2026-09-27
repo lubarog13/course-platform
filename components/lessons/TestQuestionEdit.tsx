@@ -179,7 +179,6 @@ export default function TestQuestionEdit({
   const type = useWatch({ control, name: "type" });
   const required = useWatch({ control, name: "required" });
   const attachmentNeeded = useWatch({ control, name: "attachmentNeeded" });
-
   const onSubmit: SubmitHandler<TestQuestionFormValues> = (data) => {
     if (question.type !== "text" && options.length === 0) {
       setError("Нужен хотя бы один вариант");
@@ -361,6 +360,12 @@ export default function TestQuestionEdit({
               <Button type="button" variant="outline" onClick={addOption}>
                 Добавить ответ <PlusIcon className="size-4" />
               </Button>
+            </div>
+          )}
+          {type === "text" && (
+            <div className="flex items-center gap-2">
+              <Input {...register("textAnswer")} />
+              <Label>Ответ</Label>
             </div>
           )}
           <div className="flex items-center gap-2">

@@ -232,6 +232,7 @@ Table TestQuestion {
   score integer [not null, default: 1]
   sort_order integer [not null]
   required boolean [not null, default: true, note: 'Обязательный ли вопрос']
+  text_answer text [note: 'Для QuestionType.text']
   attachment_needed boolean [not null, default: false]
 
   checks {

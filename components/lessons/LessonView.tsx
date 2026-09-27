@@ -42,13 +42,13 @@ export default function LessonView({lessonId, prevLesson, nextLesson, canEdit, o
         fetchLesson(controller.signal);
         return () => controller.abort();
     }, [lessonId]);
-    if (!lesson) {
+    if (!lesson && !loading) {
         return <NotFound text="Урок не найден" showHomeButton={false} />;
     }
     if (loading) {
         return <Loading text="Загрузка урока..." />;
     }
-    if (error) {
+    if (error && !loading) {
         return <div>Ошибка: {error}</div>;
     }
     const handleEdit = () => {

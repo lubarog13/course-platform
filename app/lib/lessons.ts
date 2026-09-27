@@ -135,6 +135,7 @@ export type NestedTestQuestionWrite = {
   sortOrder: number;
   required: boolean;
   attachmentNeeded: boolean;
+  textAnswer?: string | null;
   options: QuestionOptionWrite[];
 };
 
@@ -396,6 +397,7 @@ function parseNestedTestQuestions(value: unknown): NestedTestQuestionWrite[] {
         0,
       ),
       required: asBoolean(raw.required, `testQuestions[${index}].required`) ?? true,
+      textAnswer: asOptionalString(raw.textAnswer, `testQuestions[${index}].textAnswer`),
       attachmentNeeded:
         asBoolean(
           raw.attachmentNeeded,
@@ -468,6 +470,7 @@ export async function replaceLessonQuestions(
         score: question.score,
         sortOrder: question.sortOrder,
         required: question.required,
+        textAnswer: question.textAnswer ?? null,
         attachmentNeeded: question.attachmentNeeded,
       },
     });
@@ -495,6 +498,7 @@ export async function replaceLessonQuestions(
         score: question.score,
         sortOrder: question.sortOrder,
         required: question.required,
+        textAnswer: question.textAnswer ?? null,
         attachmentNeeded: question.attachmentNeeded,
         ...(question.options.length > 0
           ? {
@@ -539,6 +543,7 @@ export function parseTestQuestionBody(
   const score = asOptionalInt(raw.score, "score", 1);
   const options = parseOptions(raw.options);
   const required = asBoolean(raw.required, "required");
+  const textAnswer = asOptionalString(raw.textAnswer, "textAnswer");
   const attachmentNeeded = asBoolean(raw.attachmentNeeded, "attachmentNeeded");
 
   const effectiveType = type;
@@ -570,6 +575,7 @@ export function parseTestQuestionBody(
     ...(sortOrder !== undefined && sortOrder !== null ? { sortOrder } : {}),
     ...(required !== undefined ? { required } : {}),
     ...(attachmentNeeded !== undefined ? { attachmentNeeded } : {}),
+    ...(textAnswer !== undefined ? { textAnswer } : {}),
     ...(options !== undefined ? { options } : {}),
   };
 }
@@ -630,9 +636,28 @@ export type TestAnswerWrite = {
   optionIds?: number[];
 };
 
+export type TestAnswerReturnData = {
+  questionId: number;
+  answerText?: string | null;
+  answerFileId?: number | null;
+  optionIds?: Array<{ optionId: number, isCorrect: boolean | null }>;
+  isCorrect: boolean | null;
+};
+
+
 export type TestAttemptPatchData = {
   answers: TestAnswerWrite[];
   submit?: boolean;
+  lastAttempt?: boolean | false;
+  score?: number;
+};
+
+export type TestAttemptReturnData = {
+  submit?: boolean;
+  isCorrect: boolean;
+  score: number;
+  maxScore: number;
+  answers: TestAnswerReturnData[];
 };
 
 export function parseTestAttemptAnswersBody(body: unknown): TestAttemptPatchData {
@@ -671,19 +696,36 @@ export function parseTestAttemptAnswersBody(body: unknown): TestAttemptPatchData
     } satisfies TestAnswerWrite;
   });
 
+  
+
   return {
     answers,
     submit: asBoolean(raw.submit, "submit"),
   };
 }
 
-export async function findTestAttempt(id: number, userId?: number) {
-  return prisma.testAttempt.findFirst({
+export async function findTestAttempt(id: number, resultData: TestAttemptReturnData | null, userId?: number) {
+  const attempt = await prisma.testAttempt.findFirst({
     where: {
       id,
       ...(userId !== undefined ? { userId } : {}),
     },
     include: attemptInclude,
+  });
+  if (!attempt) {
+    throw new Error("Попытка не найдена");
+  }
+  return {
+    ...attempt,
+    ...(resultData !== null ? { ...resultData } : {}),
+  };
+}
+
+export async function findTestAttemptsByLessonId(lessonId: number, userId: number) {
+  return prisma.testAttempt.findMany({
+    where: { lessonId, userId },
+    include: attemptInclude,
+    orderBy: { attemptNumber: "desc" },
   });
 }
 
@@ -730,11 +772,197 @@ export async function startTestAttempt(lessonId: number, userId: number) {
   });
 }
 
+export async function rateTestAttempt(
+  testId: number,
+  testAttempt: TestAttemptPatchData,
+): Promise<TestAttemptReturnData | null> {
+  if (!testAttempt.submit) {
+    return null;
+  }
+
+  const test = await prisma.lesson.findFirst({
+    where: { id: testId, deletedAt: null },
+    include: {
+      questions: {
+        include: {
+          options: true,
+        },
+      },
+    },
+  });
+  if (!test) {
+    throw new Error("Тест не найден");
+  }
+  if (test.type !== "test") {
+    throw new Error("Тест не является тестом");
+  }
+
+  return buildAttemptReview({
+    questions: test.questions,
+    answers: testAttempt.answers,
+    reviewEnabled: test.reviewEnabled,
+    lastAttempt: Boolean(testAttempt.lastAttempt),
+  });
+}
+
+type ReviewQuestion = {
+  id: number;
+  type: string;
+  score: number;
+  textAnswer: string | null;
+  options: Array<{ id: number; isCorrect: boolean }>;
+};
+
+export function buildAttemptReview(params: {
+  questions: ReviewQuestion[];
+  answers: TestAnswerWrite[];
+  reviewEnabled: boolean;
+  lastAttempt: boolean;
+  score?: number | null;
+  maxScore?: number | null;
+}): TestAttemptReturnData {
+  const { questions, answers: userAnswers, reviewEnabled, lastAttempt } = params;
+  let score = 0;
+  let maxScore = 0;
+  const answers: TestAnswerReturnData[] = [];
+
+  for (const question of questions) {
+    maxScore += question.score;
+    const userAnswer = userAnswers.find(
+      (answer) => answer.questionId === question.id,
+    );
+    const selectedIds = userAnswer?.optionIds ?? [];
+    const correctOptionIds = new Set(
+      question.options.filter((option) => option.isCorrect).map((option) => option.id),
+    );
+
+    let isCorrect = false;
+    let optionFeedback: TestAnswerReturnData["optionIds"];
+
+    if (question.type === "single_choice") {
+      isCorrect =
+        selectedIds.length === 1 && correctOptionIds.has(selectedIds[0]!);
+    } else if (question.type === "multiple_choice") {
+      isCorrect = sameIdSet(selectedIds, [...correctOptionIds]);
+    } else if (question.type === "text") {
+      isCorrect = compareTextAnswers(
+        question.textAnswer ?? null,
+        userAnswer?.answerText ?? null,
+      );
+    }
+
+    if (isCorrect) {
+      score += question.score;
+    }
+
+    if (reviewEnabled && question.type !== "text") {
+      if (lastAttempt) {
+        optionFeedback = question.options.map((option) => ({
+          optionId: option.id,
+          isCorrect: option.isCorrect,
+        }));
+      } else {
+        optionFeedback = selectedIds
+          .filter((optionId) => !correctOptionIds.has(optionId))
+          .map((optionId) => ({
+            optionId,
+            isCorrect: false,
+          }));
+      }
+    }
+
+    answers.push({
+      questionId: question.id,
+      answerText: userAnswer?.answerText,
+      answerFileId: userAnswer?.answerFileId,
+      ...(optionFeedback !== undefined ? { optionIds: optionFeedback } : {}),
+      isCorrect: reviewEnabled ? isCorrect : null,
+    });
+  }
+
+  return {
+    submit: true,
+    score: params.score ?? score,
+    maxScore: params.maxScore ?? maxScore,
+    isCorrect: answers.every((answer) => answer.isCorrect !== false),
+    answers,
+  };
+}
+
+/** Просмотр завершённой попытки с теми же правилами раскрытия опций. */
+export async function getTestAttemptForReview(attemptId: number, userId: number) {
+  const attempt = await prisma.testAttempt.findFirst({
+    where: { id: attemptId, userId },
+    include: {
+      ...attemptInclude,
+      lesson: {
+        select: {
+          id: true,
+          type: true,
+          maxAttempts: true,
+          reviewEnabled: true,
+          questions: {
+            include: {
+              options: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!attempt) {
+    throw new Error("Попытка не найдена");
+  }
+  if (!attempt.submittedAt) {
+    throw new Error("Попытка ещё не завершена");
+  }
+  if (attempt.lesson.type !== "test") {
+    throw new Error("Урок не является тестом");
+  }
+  if (!attempt.lesson.reviewEnabled) {
+    throw new Error("Просмотр ответов отключён");
+  }
+
+  const writeAnswers: TestAnswerWrite[] = attempt.answers.map((answer) => ({
+    questionId: answer.questionId,
+    answerText: answer.answerText,
+    answerFileId: answer.answerFileId,
+    optionIds: answer.selectedOptions.map((option) => option.optionId),
+  }));
+
+  const lastAttempt =
+    attempt.lesson.maxAttempts != null &&
+    attempt.attemptNumber >= attempt.lesson.maxAttempts;
+
+  const review = buildAttemptReview({
+    questions: attempt.lesson.questions,
+    answers: writeAnswers,
+    reviewEnabled: true,
+    lastAttempt,
+    score: attempt.score,
+    maxScore: attempt.maxScore,
+  });
+
+  const { lesson: _lesson, ...attemptRow } = attempt;
+  return {
+    ...attemptRow,
+    ...review,
+    selectedAnswers: attempt.answers,
+  };
+}
+
 function sameIdSet(a: number[], b: number[]) {
   if (a.length !== b.length) return false;
   const left = [...a].sort((x, y) => x - y);
   const right = [...b].sort((x, y) => x - y);
   return left.every((value, index) => value === right[index]);
+}
+
+function compareTextAnswers(a: string | null, b: string | null) {
+  if (a === null && b === null) return true;
+  if (a === null || b === null) return false;
+  return a.trim().replace(/\s+/g, ' ').toLowerCase() === b.trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
 export async function saveTestAttemptAnswers(
@@ -751,6 +979,8 @@ export async function saveTestAttemptAnswers(
           type: true,
           passingScore: true,
           manualGrading: true,
+          maxAttempts: true,
+          reviewEnabled: true,
           questions: {
             include: {
               options: true,
@@ -802,6 +1032,8 @@ export async function saveTestAttemptAnswers(
       }
     }
   }
+  let result = null;
+
 
   await prisma.$transaction(async (tx) => {
     for (const answer of data.answers) {
@@ -819,7 +1051,6 @@ export async function saveTestAttemptAnswers(
           answerText:
             question.type === "text" ? (answer.answerText ?? null) : null,
           answerFileId: answer.answerFileId ?? null,
-          score: 0,
         },
         update: {
           ...(answer.answerText !== undefined
@@ -849,58 +1080,34 @@ export async function saveTestAttemptAnswers(
 
     if (!data.submit) return;
 
-    const answers = await tx.userTestAnswer.findMany({
-      where: { attemptId },
-      include: { selectedOptions: true },
+    const isLastAttempt =
+      attempt.lesson.maxAttempts != null &&
+      attempt.attemptNumber >= attempt.lesson.maxAttempts;
+
+    result = await rateTestAttempt(attempt.lesson.id, {
+      ...data,
+      lastAttempt: isLastAttempt,
     });
-    const answerByQuestionId = new Map(
-      answers.map((answer) => [answer.questionId, answer]),
-    );
-
-    let score = 0;
-    let maxScore = 0;
-
-    for (const question of attempt.lesson.questions) {
-      maxScore += question.score;
-      const answer = answerByQuestionId.get(question.id);
-      let questionScore = 0;
-
-      if (question.type === "text") {
-        questionScore = 0;
-      } else if (answer) {
-        const selected = answer.selectedOptions.map((row) => row.optionId);
-        const correct = question.options
-          .filter((option) => option.isCorrect)
-          .map((option) => option.id);
-        if (sameIdSet(selected, correct)) {
-          questionScore = question.score;
-        }
-      }
-
-      score += questionScore;
-      if (answer) {
-        await tx.userTestAnswer.update({
-          where: { id: answer.id },
-          data: { score: questionScore },
-        });
-      }
+    if (!result) {
+      throw new Error("Не удалось оценить попытку");
     }
+
 
     const passed =
       attempt.lesson.passingScore == null
         ? null
-        : score >= attempt.lesson.passingScore;
+        : result.score >= attempt.lesson.passingScore;
 
     await tx.testAttempt.update({
       where: { id: attemptId },
       data: {
         submittedAt: new Date(),
-        score,
-        maxScore,
+        score: result.score,
+        maxScore: result.maxScore,
         passed: attempt.lesson.manualGrading ? null : passed,
       },
     });
   });
 
-  return findTestAttempt(attemptId, userId);
+  return findTestAttempt(attemptId, result, userId);
 }

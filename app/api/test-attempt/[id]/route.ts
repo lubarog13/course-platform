@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { jsonError, parseNumericId, prismaErrorResponse } from "@/app/lib/api";
 import {
   findTestAttempt,
+  getTestAttemptForReview,
   parseTestAttemptAnswersBody,
   saveTestAttemptAnswers,
 } from "@/app/lib/lessons";
@@ -12,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
-/** GET /api/test-attempt/[id] — своя попытка с ответами. */
+/** GET /api/test-attempt/[id] — своя попытка с разбором (если завершена). */
 export async function GET(_request: NextRequest, { params }: RouteParams) {
   try {
     const session = await auth();
@@ -22,12 +23,30 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
 
     const { id } = await params;
     const attemptId = parseNumericId(id);
-    const attempt = await findTestAttempt(attemptId, Number(session.user.id));
-    if (!attempt) {
-      return jsonError("Попытка не найдена", 404);
+    const userId = Number(session.user.id);
+
+    try {
+      const reviewed = await getTestAttemptForReview(attemptId, userId);
+      return NextResponse.json(reviewed);
+    } catch (error) {
+      if (error instanceof Error && error.message === "Попытка ещё не завершена") {
+        const attempt = await findTestAttempt(attemptId, null, userId);
+        return NextResponse.json(attempt);
+      }
+      throw error;
     }
-    return NextResponse.json(attempt);
   } catch (error) {
+    if (error instanceof Error) {
+      if (error.message === "Попытка не найдена") {
+        return jsonError(error.message, 404);
+      }
+      if (
+        error.message === "Просмотр ответов отключён" ||
+        error.message === "Урок не является тестом"
+      ) {
+        return jsonError(error.message, 400);
+      }
+    }
     return prismaErrorResponse(error, "Попытка теста");
   }
 }
