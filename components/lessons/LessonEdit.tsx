@@ -192,6 +192,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
       attachmentNeeded: false,
       lessonId: lesson.id,
       options: [],
+      textAnswer: null,
     } as TestQuestionDto;
     setTestQuestions([...testQuestions, newQuestion]);
   };

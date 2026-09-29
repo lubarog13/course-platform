@@ -6,9 +6,10 @@ import {
   type CourseInstructor,
   type User,
   CoursePart,
+  UserCourse,
 } from "@prisma/client";
 import { NextResponse } from "next/server";
-
+import { auth } from "@/auth";
 import { CourseLevel, type Instructor } from "@/app/lib/models";
 import { prisma } from "@/app/lib/prisma";
 
@@ -87,6 +88,7 @@ export type CourseRecord = Course & {
   instructors: (CourseInstructor & {
     user: Omit<User, "passwordHash">;
   })[];
+  enrollments: UserCourse[] | null;
   parts?: CoursePart[] | null;
 };
 
@@ -127,6 +129,7 @@ export function serializeCourse(course: CourseRecord) {
     rating: course.rating === null ? null : Number(course.rating),
     instructors: course.instructors.map(serializeInstructor),
     parts: course.parts ?? [],
+    enrollments: course.enrollments ?? [],
   };
 }
 
@@ -386,9 +389,19 @@ export function parseCourseBody(body: unknown, mode: "create" | "update"): Cours
 }
 
 export async function findCourse(id: string) {
+  const session = await auth();
+  console.log({
+    ...parseIdParam(id),
+    ...(session?.user?.id && session.user.role !== "admin" ? { enrollments: { some: { userId: Number(session.user.id) } } } : {}),
+  })
   return prisma.course.findFirst({
-    where: parseIdParam(id),
-    include: courseSingleInclude,
+    where: {
+      ...parseIdParam(id),
+    },
+    include: {
+      ...courseSingleInclude,
+      enrollments: session?.user?.id ? true : false,
+    },
   });
 }
 

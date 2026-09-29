@@ -60,6 +60,9 @@ enum NotificationType {
   new_message
   lesson_comment
   course_published
+  course_enrollment_request
+  course_enrollment_request_accepted
+  course_enrollment_request_rejected
 }
 
 enum NotificationEntityType {
@@ -162,6 +165,7 @@ model Course {
   deletedAt       DateTime?    @map("deleted_at") @db.Timestamptz
   tags            String[]     @default([])
   durationSeconds Int          @default(0) @map("duration_seconds")
+  deadlineDays    Int?         @map("deadline_days")
 
   coverFile          File?                   @relation("CourseCover", fields: [coverFileId], references: [id])
   category           Category?               @relation(fields: [categoryId], references: [id])
@@ -199,7 +203,7 @@ model CoursePart {
   createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   deletedAt   DateTime? @map("deleted_at") @db.Timestamptz
-
+  deadlineDays Int?      @map("deadline_days")
   course       Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
   lessons      Lesson[]
   userProgress UserCoursePart[]

@@ -10,6 +10,18 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
         return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
     }
     const currentUser = Number(session.user.id);
+
+    const enrollment = await prisma.userCourse.findFirst({
+        where: {
+            userId: Number(session.user.id),
+            course: {
+                slug: id
+            }
+        }
+    });
+    if (!enrollment) {
+        return NextResponse.json({ error: "Не записан на курс" }, { status: 401 });
+    }
     const parts = await prisma.$queryRaw`SELECT course_id, "Course"."name" as course_name, "CoursePart".id as course_part_id, "CoursePart".name, "CoursePart".description, "CoursePart".sort_order, "CoursePart".created_at, 
     "CoursePart".updated_at, "CoursePart".deleted_at, "Lesson".id as lesson_id, "Lesson"."name" as lesson_name, "Lesson"."description" as lesson_description, "Lesson"."sort_order" as lesson_sort_order, "Lesson"."type" as lesson_type, 
     "Lesson"."points" as lesson_points, "Lesson"."duration_seconds" as lesson_duration_seconds

@@ -49,6 +49,9 @@ export default function CourseView() {
             })
             .catch(error => {
                 setError(error.message);
+                if (error.message === "Не записан на курс") {
+                    router.push(`/courses/${slug}`);
+                }
             }).finally(() => {
                 if (!signal.aborted) setLoading(false);
             });
@@ -67,7 +70,7 @@ export default function CourseView() {
     }
 
     if (loading) return <Loading text="Загрузка курса..." />;
-    if (error) return <div>Ошибка: {error}</div>;
+    if (error) return <div className="flex flex-col items-center justify-center h-full min-h-screen container mx-auto px-4 pt-8 relative">Ошибка: {error}</div>;
     return  <div className='flex flex-col lg:flex-row container align-stretch mx-auto px-4 pt-8 min-h-screen relative'>
         {!isDesktop && (<Drawer  swipeDirection='left' modal={true} open={isOpen} onOpenChange={setIsOpen}>
             <DrawerTrigger className={`transition-all duration-300"`} render={

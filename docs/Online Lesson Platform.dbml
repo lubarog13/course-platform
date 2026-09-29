@@ -54,6 +54,9 @@ Enum NotificationType {
   new_message
   lesson_comment
   course_published
+  course_enrollment_request
+  course_enrollment_request_accepted
+  course_enrollment_request_rejected
 }
 
 // --- Пользователи и файлы ---
@@ -122,6 +125,7 @@ Table Course {
   deleted_at timestamptz
   tags varchar[] [note: 'Теги курса']
   duration_seconds integer [default: 0, note: 'Общая длительность курса в секундах']
+  deadline_days integer [note: 'NULL = без дедлайна']
 
   checks {
     `created_at <= updated_at` [name: 'course_timestamps']
@@ -157,6 +161,7 @@ Table CoursePart {
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   deleted_at timestamptz
+  deadline_days integer [note: 'NULL = без дедлайна']
 
   checks {
     `sort_order >= 0` [name: 'course_part_sort_order']
