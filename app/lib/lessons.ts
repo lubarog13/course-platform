@@ -1,4 +1,4 @@
-import type { Lesson, Prisma, TestQuestion, TestQuestionOption, VideoPlatform, Video } from "@prisma/client";
+import type { Lesson, Prisma, TestQuestion, TestQuestionOption, VideoPlatform, Video, UserLesson } from "@prisma/client";
 import type { File as FileModel } from "@/app/lib/models";
 import {
   asBoolean,
@@ -28,6 +28,7 @@ export type LessonFullDto = Lesson & {
   testQuestions: TestQuestionDto[];
   attachment?: FileModel | null;
   publishedAt?: Date | string | null;
+  userProgress?: UserLesson | null;
   video?: {
     id: number;
     url: string;
@@ -78,12 +79,21 @@ export function serializeQuestion(
   };
 }
 
-export async function findLesson(id: number, includeCorrectAnswers = false) {
+export async function findLesson(id: number, userId: number, isTeacher: boolean, includeCorrectAnswers = false) {
+  let filters = {
+    where: {userId: userId},
+  }
+  if (isTeacher) {
+    filters = {} as any;
+  }
   const lesson = await prisma.lesson.findFirst({
     where: { id, deletedAt: null },
     include: {
       video: true,
       attachment: true,
+      userProgress: {
+        ...filters,
+      },
       questions: {
         orderBy: { sortOrder: "asc" },
         include: includeCorrectAnswers
@@ -1105,6 +1115,32 @@ export async function saveTestAttemptAnswers(
         score: result.score,
         maxScore: result.maxScore,
         passed: attempt.lesson.manualGrading ? null : passed,
+      },
+    });
+
+    const lessonCompleted =
+      attempt.lesson.manualGrading || passed === true || passed === null;
+    await tx.userLesson.upsert({
+      where: {
+        userId_lessonId: {
+          userId,
+          lessonId: attempt.lessonId,
+        },
+      },
+      create: {
+        userId,
+        lessonId: attempt.lessonId,
+        points: result.score,
+        completed: lessonCompleted,
+        completedAt: lessonCompleted ? new Date() : null,
+        lastAccessedAt: new Date(),
+      },
+      update: {
+        points: result.score,
+        ...(lessonCompleted
+          ? { completed: true, completedAt: new Date() }
+          : {}),
+        lastAccessedAt: new Date(),
       },
     });
   });

@@ -1,42 +1,114 @@
-import { NextResponse, NextRequest } from "next/server";
-import { prisma } from "@/app/lib/prisma";
-type RouteParams = { params: Promise<{ id: string }> };
-import { coursePartsFromSql } from "@/app/lib/courseParts";
-import { auth } from "@/auth";
-export async function GET(_request: NextRequest, { params }: RouteParams) {
-    const { id } = await params;
-    const session = await auth();
-    if (!session?.user?.id) {
-        return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
-    }
-    const currentUser = Number(session.user.id);
+import { NextResponse, type NextRequest } from "next/server";
 
-    const enrollment = await prisma.userCourse.findFirst({
-        where: {
-            userId: Number(session.user.id),
-            course: {
-                slug: id
-            }
-        }
-    });
-    if (!enrollment) {
-        return NextResponse.json({ error: "Не записан на курс" }, { status: 401 });
-    }
-    const parts = await prisma.$queryRaw`SELECT course_id, "Course"."name" as course_name, "CoursePart".id as course_part_id, "CoursePart".name, "CoursePart".description, "CoursePart".sort_order, "CoursePart".created_at, 
-    "CoursePart".updated_at, "CoursePart".deleted_at, "Lesson".id as lesson_id, "Lesson"."name" as lesson_name, "Lesson"."description" as lesson_description, "Lesson"."sort_order" as lesson_sort_order, "Lesson"."type" as lesson_type, 
-    "Lesson"."points" as lesson_points, "Lesson"."duration_seconds" as lesson_duration_seconds
-     FROM "CoursePart" LEFT JOIN "Lesson" ON "CoursePart"."id" = "Lesson"."course_part_id" Left Join "Course" ON "CoursePart"."course_id" = "Course"."id" 
-     WHERE "Course"."slug" = ${id}
-    GROUP BY "Course"."id", "CoursePart"."id", "Lesson"."id"
-    ORDER BY "CoursePart"."sort_order"`;
-    const canEdit = await prisma.course.findFirst({
-        where: {
-            slug: id,
-            instructors: {some: {userId: currentUser}} 
-        }
-    });
-    return NextResponse.json({courseName: (parts as any)[0].course_name,
-        parts: coursePartsFromSql(parts as any[]),
-        canEdit: canEdit ? true : false
-    });
+import { auth } from "@/auth";
+import { coursePartsFromSql } from "@/app/lib/courseParts";
+import { prisma } from "@/app/lib/prisma";
+
+type RouteParams = { params: Promise<{ id: string }> };
+
+type CoursePartsSqlRow = {
+  course_id: number;
+  course_name: string;
+  course_progress: number | null;
+  course_status: string | null;
+  course_part_id: number;
+  name: string;
+  description: string | null;
+  sort_order: number;
+  created_at: Date;
+  updated_at: Date;
+  deleted_at: Date | null;
+  deadline_days: number | null;
+  part_completed: boolean | null;
+  part_progress: number | null;
+  lesson_id: number | null;
+  lesson_name: string | null;
+  lesson_description: string | null;
+  lesson_sort_order: number | null;
+  lesson_type: string | null;
+  lesson_points: number | null;
+  lesson_duration_seconds: number | null;
+  user_completed: boolean | null;
+  user_points: number | null;
+};
+
+export async function GET(_request: NextRequest, { params }: RouteParams) {
+  const { id } = await params;
+  const session = await auth();
+  if (!session?.user?.id) {
+    return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
+  }
+  const currentUser = Number(session.user.id);
+
+  const enrollment = await prisma.userCourse.findFirst({
+    where: {
+      userId: currentUser,
+      course: { slug: id },
+    },
+  });
+  if (!enrollment) {
+    return NextResponse.json({ error: "Не записан на курс" }, { status: 403 });
+  }
+
+  const parts = await prisma.$queryRaw<CoursePartsSqlRow[]>`
+    SELECT
+      "Course".id AS course_id,
+      "Course"."name" AS course_name,
+      "UserCourse".progress AS course_progress,
+      "UserCourse".status AS course_status,
+      "CoursePart".id AS course_part_id,
+      "CoursePart".name,
+      "CoursePart".description,
+      "CoursePart".sort_order,
+      "CoursePart".created_at,
+      "CoursePart".updated_at,
+      "CoursePart".deleted_at,
+      "CoursePart".deadline_days,
+      "UserCoursePart".completed AS part_completed,
+      "UserCoursePart".progress AS part_progress,
+      "Lesson".id AS lesson_id,
+      "Lesson"."name" AS lesson_name,
+      "Lesson"."description" AS lesson_description,
+      "Lesson"."sort_order" AS lesson_sort_order,
+      "Lesson"."type" AS lesson_type,
+      "Lesson"."points" AS lesson_points,
+      "Lesson"."duration_seconds" AS lesson_duration_seconds,
+      "UserLesson".completed AS user_completed,
+      "UserLesson".points AS user_points
+    FROM "CoursePart"
+    INNER JOIN "Course"
+      ON "CoursePart"."course_id" = "Course"."id"
+    LEFT JOIN "UserCourse"
+      ON "UserCourse"."course_id" = "Course"."id"
+      AND "UserCourse"."user_id" = ${currentUser}
+    LEFT JOIN "Lesson"
+      ON "CoursePart"."id" = "Lesson"."course_part_id"
+      AND "Lesson"."deleted_at" IS NULL
+    LEFT JOIN "UserLesson"
+      ON "Lesson"."id" = "UserLesson"."lesson_id"
+      AND "UserLesson"."user_id" = ${currentUser}
+    LEFT JOIN "UserCoursePart"
+      ON "CoursePart"."id" = "UserCoursePart"."course_part_id"
+      AND "UserCoursePart"."user_id" = ${currentUser}
+    WHERE "Course"."slug" = ${id}
+      AND "CoursePart"."deleted_at" IS NULL
+    ORDER BY "CoursePart"."sort_order", "Lesson"."sort_order"
+  `;
+
+  const canEdit = await prisma.course.findFirst({
+    where: {
+      slug: id,
+      instructors: { some: { userId: currentUser } },
+    },
+    select: { id: true },
+  });
+
+  const first = parts[0];
+  return NextResponse.json({
+    courseName: first?.course_name ?? "",
+    courseProgress: first?.course_progress ?? enrollment.progress,
+    courseStatus: first?.course_status ?? enrollment.status,
+    parts: coursePartsFromSql(parts),
+    canEdit: Boolean(canEdit),
+  });
 }

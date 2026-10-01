@@ -8,6 +8,7 @@ import {
   replaceLessonQuestions,
 } from "@/app/lib/lessons";
 import { prisma } from "@/app/lib/prisma";
+import { auth } from "@/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +17,13 @@ type RouteParams = { params: Promise<{ id: string }> };
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
+    const session = await auth();
+      if (!session?.user?.id) {
+        return jsonError("Не авторизован", 401);
+      }
     const includeCorrect =
       request.nextUrl.searchParams.get("includeCorrect") === "1";
-    const lesson = await findLesson(parseNumericId(id), includeCorrect);
+    const lesson = await findLesson(parseNumericId(id), Number(session?.user?.id), session?.user?.role !== "student", includeCorrect);
     if (!lesson) {
       return jsonError("Урок не найден", 404);
     }
@@ -32,7 +37,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
     const lessonId = parseNumericId(id);
-    const existing = await findLesson(lessonId, true);
+    const session = await auth();
+    if (!session?.user?.id) {
+      return jsonError("Не авторизован", 401);
+    }
+    const existing = await findLesson(lessonId, Number(session?.user?.id), session?.user?.role !== "student", true);
     if (!existing) {
       return jsonError("Урок не найден", 404);
     }
@@ -74,7 +83,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
     });
 
-    const full = await findLesson(lessonId, true);
+    const full = await findLesson(lessonId, Number(session?.user?.id), session?.user?.role !== "student", true);
     return NextResponse.json(full);
   } catch (error) {
     return prismaErrorResponse(error, "Урок");
@@ -88,8 +97,13 @@ export async function PUT(request: NextRequest, context: RouteParams) {
 export async function DELETE(_request: NextRequest, { params }: RouteParams) {
   try {
     const { id } = await params;
+    const session = await auth();
+    if (!session?.user?.id) {
+      return jsonError("Не авторизован", 401);
+    }
     const lessonId = parseNumericId(id);
-    const existing = await findLesson(lessonId, true);
+    const userId = Number(session?.user?.id);
+    const existing = await findLesson(lessonId, userId, session?.user?.role !== "student", true);
     if (!existing) {
       return jsonError("Урок не найден", 404);
     }

@@ -8,6 +8,7 @@ import {
   replaceLessonQuestions,
 } from "@/app/lib/lessons";
 import { prisma } from "@/app/lib/prisma";
+import { auth } from "@/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -104,7 +105,12 @@ export async function POST(request: NextRequest) {
       return created;
     });
 
-    const full = await findLesson(lesson.id, true);
+    const session = await auth();
+    if (!session?.user?.id) {
+      return jsonError("Не авторизован", 401);
+    }
+
+    const full = await findLesson(lesson.id, Number(session?.user?.id), session?.user?.role !== "student", true);
     return NextResponse.json(full, { status: 201 });
   } catch (error) {
     return prismaErrorResponse(error, "Урок");

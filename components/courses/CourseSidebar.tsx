@@ -20,7 +20,6 @@ export default function CourseSidebar({courseParts, courseName, openedLessonId, 
         setOpenedIndex(courseParts.findIndex((coursePart) => coursePart.lessons.some((lesson) => lesson.id === openedLessonId)));
     }
     useEffect(() => {
-        console.log(openedLessonId);
         setTimeout(() => {
             openLessonChange();
         }, 0);
@@ -53,7 +52,7 @@ export default function CourseSidebar({courseParts, courseName, openedLessonId, 
                 {courseParts.map((coursePart, index) => (
                         <Collapsible className="mb-4" key={coursePart.id} open={openedIndex === index} onOpenChange={(open) => setOpenedIndex(open ? index : null)}>
                             <CollapsibleTrigger className="flex items-center gap-3 cursor-pointer hover:text-gray-800 dark:hover:text-gray-200">
-                                <h2 className="text-lg text-left">{coursePart.name}</h2>
+                                <h2 className={`text-lg text-left ${coursePart.userProgress?.completed ? "text-green-500" : ""}`}>{coursePart.name}</h2>
                                 <ChevronDown className={`w-5 h-5 flex-shrink-0 transition-transform ${openedIndex === index ? "rotate-180" : ""}`} />
                             </CollapsibleTrigger>
                             <CollapsibleContent>
@@ -67,11 +66,11 @@ export default function CourseSidebar({courseParts, courseName, openedLessonId, 
                                                 <ItemTitle className={lesson.id === openedLessonId ? 'font-bold' : ''}>{lesson.name}</ItemTitle>
                                                 <ItemDescription>{lesson.description}</ItemDescription>
                                             </ItemContent>
-                                            <ItemContent>
-                                                <ItemDescription>{lessonDuration(lesson)}</ItemDescription>
+                                            <ItemContent className="justify-end flex flex-col align-end">
+                                                <ItemDescription className="text-right">{lessonDuration(lesson)}</ItemDescription>
                                                 <ItemDescription>
-                                                    <span className="flex items-center gap-2"><CircleDashedCheck className="w-4 h-4" />
-                                                    {lesson.points ?? 0}</span>
+                                                    <span className={`flex items-center gap-2 ${lesson.userProgress?.completed ? "text-green-500" : "text-gray-500"}`}><CircleDashedCheck className="w-4 h-4" />
+                                                    { lesson.userProgress?.points || lesson.userProgress?.points === 0 ? lesson.userProgress.points + '/' : '' }{lesson.points ?? 0}</span>
                                                 </ItemDescription>
                                             </ItemContent>
                                         </Item>

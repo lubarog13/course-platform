@@ -65,7 +65,17 @@ function remainingSecondsFromStart(
   return Math.max(0, timeLimitSeconds - elapsedSec);
 }
 
-export default function TestView({ lesson }: { lesson: LessonFullDto }) {
+export default function TestView({
+  lesson,
+  onAttemptSubmitted,
+}: {
+  lesson: LessonFullDto;
+  onAttemptSubmitted?: (result: {
+    score: number | null;
+    maxScore: number | null;
+    passed: boolean | null;
+  }) => void;
+}) {
   const timeLimit = lesson.timeLimitSeconds;
   const [isStarted, setIsStarted] = useState(false);
   const [remainingTime, setRemainingTime] = useState(timeLimit ?? 0);
@@ -119,9 +129,15 @@ export default function TestView({ lesson }: { lesson: LessonFullDto }) {
         if (submit) {
           setTestAttempt(data);
           setIsSubmitted(true);
+          setIsStarted(false);
           if (Array.isArray(data.answers) && data.answers[0] && "isCorrect" in data.answers[0]) {
             setReviewAnswers(data.answers as TestAnswerReturnData[]);
           }
+          onAttemptSubmitted?.({
+            score: data.score ?? null,
+            maxScore: data.maxScore ?? null,
+            passed: data.passed ?? null,
+          });
         }
         return data;
       } catch (err) {
@@ -132,7 +148,7 @@ export default function TestView({ lesson }: { lesson: LessonFullDto }) {
         setIsSaving(false);
       }
     },
-    [testAttempt],
+    [testAttempt, onAttemptSubmitted],
   );
 
   const handleAnswerChange = (answer: TestAnswerWrite) => {

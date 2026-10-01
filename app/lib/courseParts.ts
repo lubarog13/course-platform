@@ -1,4 +1,4 @@
-import type { CoursePart, Lesson } from "@prisma/client";
+import type { CoursePart, Lesson, UserLesson } from "@prisma/client";
 
 import {
   asOptionalInt,
@@ -10,16 +10,17 @@ import {
 } from "@/app/lib/api";
 import { prisma } from "@/app/lib/prisma";
 
-export type LessonDto = Pick<
-  Lesson,
-  "id" | "name" | "description" | "sortOrder" | "type" | "points" | "durationSeconds"
->;
+export type LessonDto = Pick<Lesson, "id" | "name" | "description" | "sortOrder" | "type" | "points" | "durationSeconds"> & {
+  userProgress?: Pick<UserLesson, "completed" | "points"> | null;
+};
 
 export type CoursePartDto = CoursePart & {
   lessons: LessonDto[];
+  userProgress?: {
+    completed: boolean;
+    progress: number;
+  } | null;
 };
-
-
 
 export type CoursePartExtendedDto = CoursePartDto & {
   course: {
@@ -42,7 +43,15 @@ export function coursePartsFromSql(response: any[]): CoursePartDto[] {
         updatedAt: item["updated_at"],
         deletedAt: item["deleted_at"],
         courseId: item["course_id"],
+        deadlineDays: item["deadline_days"],
         lessons: [],
+        userProgress:
+          item["part_completed"] != null || item["part_progress"] != null
+            ? {
+                completed: Boolean(item["part_completed"]),
+                progress: Number(item["part_progress"] ?? 0),
+              }
+            : null,
       });
       counter++;
     }
@@ -55,6 +64,13 @@ export function coursePartsFromSql(response: any[]): CoursePartDto[] {
         type: item["lesson_type"],
         points: item["lesson_points"],
         durationSeconds: item["lesson_duration_seconds"],
+        userProgress:
+          item["user_completed"] != null || item["user_points"] != null
+            ? {
+                completed: Boolean(item["user_completed"]),
+                points: Number(item["user_points"] ?? 0),
+              }
+            : null,
       });
     }
   }
