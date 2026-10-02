@@ -1,4 +1,4 @@
-import type { Lesson, Prisma, TestQuestion, TestQuestionOption, VideoPlatform, Video, UserLesson } from "@prisma/client";
+import type { Lesson, Prisma, TestQuestion, TestQuestionOption, VideoPlatform, Video, UserLesson, Role } from "@prisma/client";
 import type { File as FileModel } from "@/app/lib/models";
 import {
   asBoolean,
@@ -12,6 +12,7 @@ import {
 } from "@/app/lib/api";
 import { LessonType, QuestionType } from "@/app/lib/models";
 import { prisma } from "@/app/lib/prisma";
+import { isCourseStaff } from "@/app/lib/enrollment";
 
 export type TestQuestionOptionDto = {
   id: number;
@@ -22,6 +23,7 @@ export type TestQuestionOptionDto = {
 
 export type TestQuestionDto = TestQuestion & {
   options: TestQuestionOptionDto[];
+  textAnswer?: string | null;
 };
 
 export type LessonFullDto = Lesson & {
@@ -652,6 +654,7 @@ export type TestAnswerReturnData = {
   answerFileId?: number | null;
   optionIds?: Array<{ optionId: number, isCorrect: boolean | null }>;
   isCorrect: boolean | null;
+  score?: number;
 };
 
 
@@ -660,6 +663,15 @@ export type TestAttemptPatchData = {
   submit?: boolean;
   lastAttempt?: boolean | false;
   score?: number;
+};
+
+export type TeacherScoreWrite = {
+  questionId: number;
+  score: number;
+};
+
+export type TeacherGradePatchData = {
+  scores: TeacherScoreWrite[];
 };
 
 export type TestAttemptReturnData = {
@@ -714,6 +726,28 @@ export function parseTestAttemptAnswersBody(body: unknown): TestAttemptPatchData
   };
 }
 
+export function parseTeacherGradeBody(body: unknown): TeacherGradePatchData {
+  const raw = requireObject(body);
+  if (!Array.isArray(raw.scores)) {
+    throw new Error("Поле scores должно быть массивом");
+  }
+
+  const scores = raw.scores.map((item, index) => {
+    if (item === null || typeof item !== "object" || Array.isArray(item)) {
+      throw new Error(`scores[${index}] должен быть объектом`);
+    }
+    const row = item as Record<string, unknown>;
+    const questionId = asRequiredId(row.questionId, `scores[${index}].questionId`);
+    const score = asRequiredInt(row.score, `scores[${index}].score`);
+    if (score < 0) {
+      throw new Error(`scores[${index}].score не может быть отрицательным`);
+    }
+    return { questionId, score } satisfies TeacherScoreWrite;
+  });
+
+  return { scores };
+}
+
 export async function findTestAttempt(id: number, resultData: TestAttemptReturnData | null, userId?: number) {
   const attempt = await prisma.testAttempt.findFirst({
     where: {
@@ -731,12 +765,52 @@ export async function findTestAttempt(id: number, resultData: TestAttemptReturnD
   };
 }
 
+export async function findStudentsWithAttemptsByLessonId(lessonId: number, limit: number = 10, offset: number = 0) {
+  return prisma.testAttempt.groupBy({
+    by: ["userId", "submittedAt"],
+    where: { lessonId },
+    orderBy: { submittedAt: "desc" },
+    take: limit,
+    skip: offset,
+  });
+}
+
 export async function findTestAttemptsByLessonId(lessonId: number, userId: number) {
   return prisma.testAttempt.findMany({
     where: { lessonId, userId },
     include: attemptInclude,
     orderBy: { attemptNumber: "desc" },
   });
+}
+
+/** Дедлайн части курса для пользователя (UserCoursePart.deadline). */
+export async function findUserCoursePartDeadline(
+  userId: number,
+  lessonId: number,
+): Promise<Date | null> {
+  const lesson = await prisma.lesson.findFirst({
+    where: { id: lessonId, deletedAt: null },
+    select: { coursePartId: true },
+  });
+  if (!lesson) return null;
+
+  const progress = await prisma.userCoursePart.findUnique({
+    where: {
+      userId_coursePartId: {
+        userId,
+        coursePartId: lesson.coursePartId,
+      },
+    },
+    select: { deadline: true },
+  });
+  return progress?.deadline ?? null;
+}
+
+export function assertCoursePartDeadlineAllows(deadline: Date | null | undefined) {
+  if (!deadline) return;
+  if (deadline.getTime() < Date.now()) {
+    throw new Error("Срок сдачи части курса истёк");
+  }
 }
 
 export async function startTestAttempt(lessonId: number, userId: number) {
@@ -747,6 +821,7 @@ export async function startTestAttempt(lessonId: number, userId: number) {
       type: true,
       maxAttempts: true,
       timeLimitSeconds: true,
+      coursePartId: true,
     },
   });
   if (!lesson) {
@@ -755,6 +830,9 @@ export async function startTestAttempt(lessonId: number, userId: number) {
   if (lesson.type !== "test") {
     throw new Error("Попытку можно начать только для урока типа test");
   }
+
+  const deadline = await findUserCoursePartDeadline(userId, lessonId);
+  assertCoursePartDeadlineAllows(deadline);
 
   const openAttempt = await prisma.testAttempt.findFirst({
     where: { userId, lessonId, submittedAt: null },
@@ -861,6 +939,7 @@ export function buildAttemptReview(params: {
       );
     }
 
+    const earned = isCorrect ? question.score : 0;
     if (isCorrect) {
       score += question.score;
     }
@@ -887,6 +966,7 @@ export function buildAttemptReview(params: {
       answerFileId: userAnswer?.answerFileId,
       ...(optionFeedback !== undefined ? { optionIds: optionFeedback } : {}),
       isCorrect: reviewEnabled ? isCorrect : null,
+      score: earned,
     });
   }
 
@@ -1011,6 +1091,12 @@ export async function saveTestAttemptAnswers(
     throw new Error("Урок не является тестом");
   }
 
+  const deadline = await findUserCoursePartDeadline(userId, attempt.lessonId);
+  // После дедлайна нельзя дописывать ответы, но submit ещё можно (автозавершение).
+  if (!data.submit) {
+    assertCoursePartDeadlineAllows(deadline);
+  }
+
   const questionById = new Map(
     attempt.lesson.questions.map((question) => [question.id, question]),
   );
@@ -1108,6 +1194,18 @@ export async function saveTestAttemptAnswers(
         ? null
         : result.score >= attempt.lesson.passingScore;
 
+    for (const graded of result.answers) {
+      await tx.userTestAnswer.updateMany({
+        where: {
+          attemptId,
+          questionId: graded.questionId,
+        },
+        data: {
+          score: graded.score ?? 0,
+        },
+      });
+    }
+
     await tx.testAttempt.update({
       where: { id: attemptId },
       data: {
@@ -1146,4 +1244,205 @@ export async function saveTestAttemptAnswers(
   });
 
   return findTestAttempt(attemptId, result, userId);
+}
+
+async function assertLessonCourseStaff(
+  lessonId: number,
+  actor: { id: number; role: Role },
+) {
+  const lesson = await prisma.lesson.findFirst({
+    where: { id: lessonId, deletedAt: null },
+    select: {
+      id: true,
+      type: true,
+      coursePart: { select: { courseId: true } },
+    },
+  });
+  if (!lesson) {
+    throw new Error("Урок не найден");
+  }
+  if (lesson.type !== "test") {
+    throw new Error("Урок не является тестом");
+  }
+  const staff = await isCourseStaff(lesson.coursePart.courseId, actor.id, actor.role);
+  if (!staff) {
+    throw new Error("Нет доступа к проверке теста");
+  }
+  return lesson;
+}
+
+/** Последняя завершённая попытка студента по уроку (для преподавателя). */
+export async function getLatestSubmittedAttemptForTeacher(
+  lessonId: number,
+  studentUserId: number,
+  actor: { id: number; role: Role },
+) {
+  await assertLessonCourseStaff(lessonId, actor);
+
+  const attempt = await prisma.testAttempt.findFirst({
+    where: {
+      lessonId,
+      userId: studentUserId,
+      submittedAt: { not: null },
+    },
+    include: attemptInclude,
+    orderBy: [{ attemptNumber: "desc" }, { submittedAt: "desc" }],
+  });
+
+  if (!attempt) {
+    throw new Error("Завершённая попытка не найдена");
+  }
+
+  return attempt;
+}
+
+/** Список студентов с попытками по уроку (для преподавателя). */
+export async function findStudentsWithAttemptsByLessonIdForTeacher(
+  lessonId: number,
+  actor: { id: number; role: Role },
+  limit: number = 10,
+  offset: number = 0,
+) {
+  await assertLessonCourseStaff(lessonId, actor);
+  return findStudentsWithAttemptsByLessonId(lessonId, limit, offset);
+}
+
+/** Список попыток студента по уроку (для преподавателя). */
+export async function findTestAttemptsByLessonIdForTeacher(
+  lessonId: number,
+  studentUserId: number,
+  actor: { id: number; role: Role },
+) {
+  await assertLessonCourseStaff(lessonId, actor);
+  return findTestAttemptsByLessonId(lessonId, studentUserId);
+}
+
+/** Ручная оценка попытки преподавателем: баллы по вопросам + итог. */
+export async function saveTeacherTestScores(
+  attemptId: number,
+  actor: { id: number; role: Role },
+  data: TeacherGradePatchData,
+) {
+  const attempt = await prisma.testAttempt.findFirst({
+    where: { id: attemptId },
+    include: {
+      lesson: {
+        select: {
+          id: true,
+          type: true,
+          passingScore: true,
+          coursePart: { select: { courseId: true } },
+          questions: {
+            select: { id: true, score: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (!attempt) {
+    throw new Error("Попытка не найдена");
+  }
+  if (attempt.lesson.type !== "test") {
+    throw new Error("Урок не является тестом");
+  }
+  if (!attempt.submittedAt) {
+    throw new Error("Нельзя оценить незавершённую попытку");
+  }
+
+  const staff = await isCourseStaff(
+    attempt.lesson.coursePart.courseId,
+    actor.id,
+    actor.role,
+  );
+  if (!staff) {
+    throw new Error("Нет доступа к проверке теста");
+  }
+
+  const questionById = new Map(
+    attempt.lesson.questions.map((question) => [question.id, question]),
+  );
+
+  for (const row of data.scores) {
+    const question = questionById.get(row.questionId);
+    if (!question) {
+      throw new Error(`Вопрос ${row.questionId} не принадлежит этому тесту`);
+    }
+    if (row.score > question.score) {
+      throw new Error(
+        `Баллы за вопрос ${row.questionId} не могут превышать ${question.score}`,
+      );
+    }
+  }
+
+  const maxScore = attempt.lesson.questions.reduce(
+    (sum, question) => sum + question.score,
+    0,
+  );
+
+  await prisma.$transaction(async (tx) => {
+    for (const row of data.scores) {
+      await tx.userTestAnswer.upsert({
+        where: {
+          attemptId_questionId: {
+            attemptId,
+            questionId: row.questionId,
+          },
+        },
+        create: {
+          attemptId,
+          questionId: row.questionId,
+          score: row.score,
+        },
+        update: {
+          score: row.score,
+        },
+      });
+    }
+
+    const answers = await tx.userTestAnswer.findMany({
+      where: { attemptId },
+      select: { score: true },
+    });
+    const totalScore = answers.reduce((sum, answer) => sum + answer.score, 0);
+    const passed =
+      attempt.lesson.passingScore == null
+        ? null
+        : totalScore >= attempt.lesson.passingScore;
+
+    await tx.testAttempt.update({
+      where: { id: attemptId },
+      data: {
+        score: totalScore,
+        maxScore,
+        passed,
+      },
+    });
+
+    await tx.userLesson.upsert({
+      where: {
+        userId_lessonId: {
+          userId: attempt.userId,
+          lessonId: attempt.lessonId,
+        },
+      },
+      create: {
+        userId: attempt.userId,
+        lessonId: attempt.lessonId,
+        points: totalScore,
+        completed: passed !== false,
+        completedAt: passed !== false ? new Date() : null,
+        lastAccessedAt: new Date(),
+      },
+      update: {
+        points: totalScore,
+        ...(passed !== false
+          ? { completed: true, completedAt: new Date() }
+          : { completed: false, completedAt: null }),
+        lastAccessedAt: new Date(),
+      },
+    });
+  });
+
+  return findTestAttempt(attemptId, null);
 }

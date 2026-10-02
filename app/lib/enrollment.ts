@@ -179,7 +179,7 @@ export async function findEnrollment(id: number) {
   });
 }
 
-async function isCourseStaff(courseId: number, userId: number, role: Role) {
+export async function isCourseStaff(courseId: number, userId: number, role: Role) {
   if (role === "admin") return true;
   if (role !== "teacher") return false;
   const instructor = await prisma.courseInstructor.findFirst({

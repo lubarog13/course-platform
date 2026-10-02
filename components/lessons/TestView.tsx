@@ -5,6 +5,7 @@ import { Timer, CircleDashedCheck, PlayCircle, PauseCircle } from "lucide-react"
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import TestQuestion from "./TestQuestion";
+import TestViewForTeacher from "./TestViewForTeacher";
 import { cn } from "@/lib/utils";
 
 type AttemptWithAnswers = {
@@ -67,9 +68,41 @@ function remainingSecondsFromStart(
 
 export default function TestView({
   lesson,
+  deadline = null,
+  gradeUserId,
   onAttemptSubmitted,
 }: {
   lesson: LessonFullDto;
+  /** UserCoursePart.deadline для текущей части курса */
+  deadline?: Date | string | null;
+  /** Если задан — форма ручной проверки попытки этого студента */
+  gradeUserId?: number | null;
+  onAttemptSubmitted?: (result: {
+    score: number | null;
+    maxScore: number | null;
+    passed: boolean | null;
+  }) => void;
+}) {
+  if (gradeUserId != null) {
+    return <TestViewForTeacher lesson={lesson} userId={gradeUserId} />;
+  }
+
+  return (
+    <TestViewStudent
+      lesson={lesson}
+      deadline={deadline}
+      onAttemptSubmitted={onAttemptSubmitted}
+    />
+  );
+}
+
+function TestViewStudent({
+  lesson,
+  deadline = null,
+  onAttemptSubmitted,
+}: {
+  lesson: LessonFullDto;
+  deadline?: Date | string | null;
   onAttemptSubmitted?: (result: {
     score: number | null;
     maxScore: number | null;
@@ -77,6 +110,18 @@ export default function TestView({
   }) => void;
 }) {
   const timeLimit = lesson.timeLimitSeconds;
+  const deadlineDate = deadline
+    ? deadline instanceof Date
+      ? deadline
+      : new Date(deadline)
+    : null;
+  const deadlineValid =
+    deadlineDate != null && !Number.isNaN(deadlineDate.getTime())
+      ? deadlineDate
+      : null;
+  const isDeadlinePassed =
+    deadlineValid != null && deadlineValid.getTime() < Date.now();
+
   const [isStarted, setIsStarted] = useState(false);
   const [remainingTime, setRemainingTime] = useState(timeLimit ?? 0);
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -104,6 +149,10 @@ export default function TestView({
   const saveAnswers = useCallback(
     async (submit: boolean) => {
       if (!testAttempt || submittingRef.current) return null;
+      if (isDeadlinePassed && !submit) {
+        setError("Срок сдачи части курса истёк");
+        return null;
+      }
       if (submit) submittingRef.current = true;
 
       setIsSaving(true);
@@ -148,7 +197,7 @@ export default function TestView({
         setIsSaving(false);
       }
     },
-    [testAttempt, onAttemptSubmitted],
+    [testAttempt, onAttemptSubmitted, isDeadlinePassed],
   );
 
   const handleAnswerChange = (answer: TestAnswerWrite) => {
@@ -231,7 +280,35 @@ export default function TestView({
     }
   }, [remainingTime, isStarted, isSubmitted, isViewing, timeLimit, saveAnswers]);
 
+  // Если дедлайн истёк во время прохождения — завершаем попытку.
+  useEffect(() => {
+    if (!deadlineValid || isSubmitted || isViewing || !isStarted || !testAttempt) return;
+    if (!isDeadlinePassed) {
+      const msLeft = deadlineValid.getTime() - Date.now();
+      if (msLeft <= 0) return;
+      const timer = setTimeout(() => {
+        setError("Срок сдачи части курса истёк");
+        void saveAnswers(true);
+      }, msLeft);
+      return () => clearTimeout(timer);
+    }
+    setError("Срок сдачи части курса истёк");
+    void saveAnswers(true);
+  }, [
+    deadlineValid,
+    isDeadlinePassed,
+    isStarted,
+    isSubmitted,
+    isViewing,
+    testAttempt,
+    saveAnswers,
+  ]);
+
   const createTestAttempt = async () => {
+    if (isDeadlinePassed) {
+      setError("Срок сдачи части курса истёк");
+      return;
+    }
     setError(null);
     try {
       const response = await fetch(`/api/test/${lesson.id}`, {
@@ -338,6 +415,20 @@ export default function TestView({
           : ""}
         {lesson.manualGrading ? "Тест будет отправлен на проверку преподавателю." : ""}
       </div>
+      {deadlineValid && (
+        <div
+          className={cn(
+            "mb-4 rounded-lg border px-3 py-2 text-sm",
+            isDeadlinePassed
+              ? "border-destructive/30 bg-destructive/5 text-destructive"
+              : "border-border bg-muted/30 text-muted-foreground",
+          )}
+        >
+          {isDeadlinePassed
+            ? `Срок сдачи истёк ${deadlineValid.toLocaleString("ru-RU")}`
+            : `Сдать до: ${deadlineValid.toLocaleString("ru-RU")}`}
+        </div>
+      )}
       <div className="mt-8">
         <span className="text-lg font-bold">Осталось попыток: {lesson.maxAttempts ? lesson.maxAttempts - attemts.length : "Не ограничено"}</span>
         <span className="block text-sm text-gray-500 dark:text-gray-400">Максимальное количество попыток: {lesson.maxAttempts ?? "Не ограничено"}</span>
@@ -431,6 +522,7 @@ export default function TestView({
       </div>
       <div className="flex gap-4 justify-between items-center mt-8">
         {!isStarted &&
+          !isDeadlinePassed &&
           (!lesson.maxAttempts || attemts.filter((a) => a.submittedAt).length < (lesson.maxAttempts ?? 0)) && (
           <Button
             variant="outline"
@@ -440,6 +532,11 @@ export default function TestView({
             <PlayCircle className="w-5 h-5 mr-2" />
             Начать тест
           </Button>
+        )}
+        {!isStarted && isDeadlinePassed && (
+          <p className="text-destructive text-sm">
+            Новые попытки недоступны: срок сдачи части курса истёк.
+          </p>
         )}
         {isViewing && (
           <Button variant="outline" className="flex-1 sm:flex-none" onClick={exitReview}>

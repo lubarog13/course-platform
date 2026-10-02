@@ -19,6 +19,7 @@ export type CoursePartDto = CoursePart & {
   userProgress?: {
     completed: boolean;
     progress: number;
+    deadline: Date | null;
   } | null;
 };
 
@@ -46,10 +47,11 @@ export function coursePartsFromSql(response: any[]): CoursePartDto[] {
         deadlineDays: item["deadline_days"],
         lessons: [],
         userProgress:
-          item["part_completed"] != null || item["part_progress"] != null
+          item["part_completed"] != null || item["part_progress"] != null || item["part_deadline"] != null
             ? {
                 completed: Boolean(item["part_completed"]),
                 progress: Number(item["part_progress"] ?? 0),
+                deadline: item["part_deadline"] != null ? new Date(item["part_deadline"]) : null,
               }
             : null,
       });

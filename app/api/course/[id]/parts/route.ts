@@ -21,6 +21,7 @@ type CoursePartsSqlRow = {
   deadline_days: number | null;
   part_completed: boolean | null;
   part_progress: number | null;
+  part_deadline: Date | null;
   lesson_id: number | null;
   lesson_name: string | null;
   lesson_description: string | null;
@@ -40,13 +41,32 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
   }
   const currentUser = Number(session.user.id);
 
+  const course = await prisma.course.findFirst({
+    where: { slug: id, deletedAt: null },
+    select: {
+      id: true,
+      name: true,
+      instructors: {
+        where: { userId: currentUser },
+        select: { userId: true },
+      },
+    },
+  });
+  if (!course) {
+    return NextResponse.json({ error: "Курс не найден" }, { status: 404 });
+  }
+
+  const isInstructor = course.instructors.length > 0;
+  const isAdmin = session.user.role === "admin";
+
   const enrollment = await prisma.userCourse.findFirst({
     where: {
       userId: currentUser,
-      course: { slug: id },
+      courseId: course.id,
     },
   });
-  if (!enrollment) {
+
+  if (!enrollment && !isInstructor && !isAdmin) {
     return NextResponse.json({ error: "Не записан на курс" }, { status: 403 });
   }
 
@@ -66,6 +86,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       "CoursePart".deadline_days,
       "UserCoursePart".completed AS part_completed,
       "UserCoursePart".progress AS part_progress,
+      "UserCoursePart".deadline AS part_deadline,
       "Lesson".id AS lesson_id,
       "Lesson"."name" AS lesson_name,
       "Lesson"."description" AS lesson_description,
@@ -95,20 +116,12 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     ORDER BY "CoursePart"."sort_order", "Lesson"."sort_order"
   `;
 
-  const canEdit = await prisma.course.findFirst({
-    where: {
-      slug: id,
-      instructors: { some: { userId: currentUser } },
-    },
-    select: { id: true },
-  });
-
   const first = parts[0];
   return NextResponse.json({
-    courseName: first?.course_name ?? "",
-    courseProgress: first?.course_progress ?? enrollment.progress,
-    courseStatus: first?.course_status ?? enrollment.status,
+    courseName: first?.course_name ?? course.name,
+    courseProgress: first?.course_progress ?? enrollment?.progress ?? 0,
+    courseStatus: first?.course_status ?? enrollment?.status ?? null,
     parts: coursePartsFromSql(parts),
-    canEdit: Boolean(canEdit),
+    canEdit: isInstructor || isAdmin,
   });
 }

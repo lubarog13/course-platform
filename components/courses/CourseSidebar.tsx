@@ -45,6 +45,10 @@ export default function CourseSidebar({courseParts, courseName, openedLessonId, 
     const handleAddLesson = (coursePartId: number, sortOrder: number) => {
         router.push(`/editor?type=lesson&coursePartId=${coursePartId}&sortOrder=${sortOrder}`);
     }
+    const checkDeadlinePassed = (coursePart: CoursePartDto) => {
+        if (!coursePart.userProgress?.deadline) return false;
+        return coursePart.userProgress.deadline < new Date();
+    }
     return (
         <div className="lg:border-r border-gray-200 p-4 pr-6 flex flex-col w-full lg:w-1/4 min-w-[300px]">
             <h1 className="mb-6 text-2xl font-bold">{courseName}</h1>
@@ -52,7 +56,10 @@ export default function CourseSidebar({courseParts, courseName, openedLessonId, 
                 {courseParts.map((coursePart, index) => (
                         <Collapsible className="mb-4" key={coursePart.id} open={openedIndex === index} onOpenChange={(open) => setOpenedIndex(open ? index : null)}>
                             <CollapsibleTrigger className="flex items-center gap-3 cursor-pointer hover:text-gray-800 dark:hover:text-gray-200">
-                                <h2 className={`text-lg text-left ${coursePart.userProgress?.completed ? "text-green-500" : ""}`}>{coursePart.name}</h2>
+                            <div className="flex flex-col gap-2">
+                                <h2 className={`text-lg text-left ${coursePart.userProgress?.completed ? "text-green-500" : ""} ${checkDeadlinePassed(coursePart) ? "text-gray-500" : ""}`}>{coursePart.name}</h2>
+                                {coursePart.userProgress?.deadline && <div className={`text-sm ${checkDeadlinePassed(coursePart) ? "text-gray-300 dark:text-gray-600" : "text-gray-500"}`}>Сдать до: {coursePart.userProgress.deadline.toLocaleDateString()}</div>}
+                                </div>
                                 <ChevronDown className={`w-5 h-5 flex-shrink-0 transition-transform ${openedIndex === index ? "rotate-180" : ""}`} />
                             </CollapsibleTrigger>
                             <CollapsibleContent>

@@ -7,7 +7,7 @@ import { UserMenu } from "./usermenu";
 
 export default function Header() {
   return (
-    <header className="bg-gray-800 text-white py-4">
+    <header className="bg-gray-800 text-white py-4 px-4 ">
       <div className="container mx-auto flex-wrap sm:flex-nowrap flex gap-6 items-center">
         <h1 className="text-center font-bold w-full sm:w-auto border-b sm:border-b-0 border-gray-700 sm:border-none pb-2 sm:pb-0">Онлайн-курсы</h1>
         <div className="flex items-center gap-2">

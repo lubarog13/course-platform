@@ -35,26 +35,39 @@ export default function CourseView() {
         return () => window.removeEventListener("resize", handleResize);
     }, []);
     const fetchCourse = async (signal: AbortSignal) => {
-        await fetch(`/api/course/${slug}/parts`)
-            .then(res => res.json())
-            .then(data => {
-                setCourseName(data.courseName);
-                setCourseParts(data.parts);
-                setCanEdit(data.canEdit);
-                const lessons = data.parts.flatMap((part: CoursePartDto) => part.lessons);
-                setLessonsList(lessons);
-                if (searchParams && searchParams.get('lessonId')) {
-                    setCurrentLessonIndex(lessons.findIndex(lesson => lesson.id === parseInt(searchParams.get('lessonId') as string)) || 0);
-                }
-            })
-            .catch(error => {
-                setError(error.message);
-                if (error.message === "Не записан на курс") {
-                    router.push(`/courses/${slug}`);
-                }
-            }).finally(() => {
-                if (!signal.aborted) setLoading(false);
-            });
+        try {
+            const res = await fetch(`/api/course/${slug}/parts`, { signal });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data?.error ?? "Не удалось загрузить курс");
+            }
+            if (!Array.isArray(data.parts)) {
+                throw new Error("Некорректный ответ сервера");
+            }
+            setCourseName(data.courseName);
+            setCourseParts(data.parts);
+            setCanEdit(Boolean(data.canEdit));
+            const lessons = (data.parts as CoursePartDto[]).flatMap(
+                (part) => part.lessons,
+            );
+            setLessonsList(lessons);
+            if (searchParams?.get("lessonId")) {
+                const idx = lessons.findIndex(
+                    (lesson: LessonDto) =>
+                        lesson.id === parseInt(searchParams.get("lessonId") as string, 10),
+                );
+                setCurrentLessonIndex(idx >= 0 ? idx : 0);
+            }
+        } catch (err) {
+            if (signal.aborted) return;
+            const message = err instanceof Error ? err.message : "Ошибка загрузки";
+            setError(message);
+            if (message === "Не записан на курс") {
+                router.push(`/courses/${slug}`);
+            }
+        } finally {
+            if (!signal.aborted) setLoading(false);
+        }
     };
     useEffect(() => {
         const controller = new AbortController();
@@ -71,6 +84,10 @@ export default function CourseView() {
 
     if (loading) return <Loading text="Загрузка курса..." />;
     if (error) return <div className="flex flex-col items-center justify-center h-full min-h-screen container mx-auto px-4 pt-8 relative">Ошибка: {error}</div>;
+    if (lessonsList.length === 0) {
+        return <div className="flex flex-col items-center justify-center h-full min-h-screen container mx-auto px-4 pt-8 relative">В курсе пока нет уроков</div>;
+    }
+    const openedLessonId = lessonsList[currentLessonIndex]?.id ?? lessonsList[0].id;
     return  <div className='flex flex-col lg:flex-row container align-stretch mx-auto px-4 pt-8 min-h-screen relative'>
         {!isDesktop && (<Drawer  swipeDirection='left' modal={true} open={isOpen} onOpenChange={setIsOpen}>
             <DrawerTrigger className={`transition-all duration-300"`} render={
@@ -88,7 +105,7 @@ export default function CourseView() {
                 </DrawerHeader>
                 <DrawerContent>
                     <div className="flex-1 overflow-y-auto overflow-x-hidden p-4">
-                    <CourseSidebar  courseParts={courseParts} courseName={courseName ?? ""} openedLessonId={lessonsList[currentLessonIndex].id} canEdit={canEdit} onLessonClick={selectLesson} />
+                    <CourseSidebar  courseParts={courseParts} courseName={courseName ?? ""} openedLessonId={openedLessonId} canEdit={canEdit} onLessonClick={selectLesson} />
                     </div>
                     <DrawerFooter>
                         <DrawerClose render={<Button className="cursor-pointer bg-black text-white hover:bg-gray-800 dark:hover:bg-gray-200 dark:bg-white dark:text-black">
@@ -98,9 +115,23 @@ export default function CourseView() {
                 </DrawerContent>
             </DrawerContent>
         </Drawer>)}
-        {isDesktop && (<CourseSidebar courseParts={courseParts} courseName={courseName ?? ""} openedLessonId={lessonsList[currentLessonIndex].id} canEdit={canEdit} onLessonClick={selectLesson} />)}
+        {isDesktop && (<CourseSidebar courseParts={courseParts} courseName={courseName ?? ""} openedLessonId={openedLessonId} canEdit={canEdit} onLessonClick={selectLesson} />)}
         <div className='flex-1'>
-            <LessonView canEdit={canEdit} lessonId={lessonsList[currentLessonIndex].id} prevLesson={currentLessonIndex > 0 ? lessonsList[currentLessonIndex - 1] : undefined} nextLesson={currentLessonIndex < lessonsList.length - 1 ? lessonsList[currentLessonIndex + 1] : undefined} onArrowClick={selectLesson} />
+            <LessonView
+              canEdit={canEdit}
+              lessonId={openedLessonId}
+              prevLesson={currentLessonIndex > 0 ? lessonsList[currentLessonIndex - 1] : undefined}
+              nextLesson={currentLessonIndex < lessonsList.length - 1 ? lessonsList[currentLessonIndex + 1] : undefined}
+              partDeadline={
+                courseParts.find((part) =>
+                  part.lessons.some((lesson) => lesson.id === openedLessonId),
+                )?.userProgress?.deadline ?? null
+              }
+              onArrowClick={selectLesson}
+              onProgressUpdate={() => {
+                fetchCourse(new AbortController().signal);
+              }}
+            />
             </div>
     </div>;
 }

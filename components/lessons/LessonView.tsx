@@ -12,13 +12,19 @@ import NotFound from "../layout/not-found";
 import Loading from "../layout/loading";
 import { useRouter } from "next/navigation";
 import type { UserLesson } from "@prisma/client";
+import { isCourseStaff } from "@/app/lib/enrollment";
+import { useSession } from "next-auth/react";
+
 
 type LessonViewProps = {
   canEdit: boolean;
   lessonId: number;
   prevLesson?: LessonDto;
   nextLesson?: LessonDto;
+  /** UserCoursePart.deadline текущей части */
+  partDeadline?: Date | string | null;
   onArrowClick: (lessonId: number) => void;
+  onProgressUpdate: () => void;
 };
 
 type UpdateLessonProgressProps = {
@@ -41,11 +47,14 @@ export default function LessonView({
   prevLesson,
   nextLesson,
   canEdit,
+  partDeadline = null,
   onArrowClick,
+  onProgressUpdate,
 }: LessonViewProps) {
   const [lesson, setLesson] = useState<LessonFullDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [courseStaff, setCourseStaff] = useState(false);
   const router = useRouter();
 
   const progressIdRef = useRef<number | null>(null);
@@ -55,6 +64,14 @@ export default function LessonView({
   const flushedRef = useRef(false);
   const lessonTypeRef = useRef<string | null>(null);
   const videoProgressRef = useRef(0);
+  const {data: session, status} = useSession();
+  useEffect(() => {
+    if (status === "authenticated") {
+      isCourseStaff(lessonId, Number(session?.user.id ?? 0), session?.user.role ?? "student").then((isStaff) => {
+        setCourseStaff(isStaff);
+      });
+    }
+  }, [status, lessonId]);
 
   const updateLessonProgress = useCallback(
     async ({
@@ -119,6 +136,7 @@ export default function LessonView({
         if (data.completed) {
           completedRef.current = true;
         }
+        onProgressUpdate();
         return data;
       } catch (err) {
         if (!keepalive) {
@@ -314,8 +332,12 @@ export default function LessonView({
         {lesson.type === "text" && (
           <MarkdownContent nodes={lesson.textContent || ""} />
         )}
-        {lesson.type === "test" && (
-          <TestView lesson={lesson} onAttemptSubmitted={handleTestSubmitted} />
+        {lesson.type === "test" && !courseStaff && (
+          <TestView
+            lesson={lesson}
+            deadline={partDeadline}
+            onAttemptSubmitted={handleTestSubmitted}
+          />
         )}
         {lesson.type === "video" && (
           <VideoView
