@@ -30,13 +30,11 @@ export async function POST(_request: NextRequest, { params }: RouteParams) {
     return NextResponse.json(attempt, { status: 201 });
   } catch (error) {
     if (error instanceof Error) {
-      if (error.message === "Урок не найден") {
+      if (error.cause === "not_found") {
         return jsonError(error.message, 404);
       }
       if (
-        error.message === "Попытку можно начать только для урока типа test" ||
-        error.message === "Исчерпано максимальное число попыток" ||
-        error.message === "Срок сдачи части курса истёк"
+        error.cause === "invalid"
       ) {
         return jsonError(error.message, 400);
       }
@@ -114,14 +112,13 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   } catch (error) {
     if (error instanceof Error) {
       if (
-        error.message === "Урок не найден" ||
-        error.message === "Завершённая попытка не найдена"
+        error.cause === "not_found"
       ) {
         return jsonError(error.message, 404);
       }
       if (
-        error.message === "Нет доступа к проверке теста" ||
-        error.message === "Урок не является тестом"
+        error.cause === "no_access" ||
+        error.cause === "invalid"
       ) {
         return jsonError(error.message, 403);
       }

@@ -67,19 +67,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json(record);
   } catch (error) {
     if (error instanceof Error) {
-      if (error.message === "Прогресс раздела не найден") {
+      if (error.cause === "not_found") {
         return jsonError(error.message, 404);
       }
       if (
-        error.message.startsWith("Нет доступа") ||
-        error.message.startsWith("Студент")
+        error.cause === "no_access"
       ) {
         return jsonError(error.message, 403);
       }
       if (
-        error.message.startsWith("Поле") ||
-        error.message.startsWith("Нет полей") ||
-        error.message.startsWith("Ожидается")
+        error.cause === "invalid"
       ) {
         return jsonError(error.message, 400);
       }

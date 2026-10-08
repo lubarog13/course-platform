@@ -26,13 +26,14 @@ try {
     });
     const categories = await prisma.category.findMany({
         select: {
+            id: true,
             name: true,
             slug: true,
         },
     });
     return NextResponse.json({
         tags: Object.entries(result).map(([tag, count]) => ({ tag, count })),
-        categories: categories.map((item) => ({ name: item.name, slug: item.slug })),
+        categories: categories.map((item) => ({ id: item.id, name: item.name, slug: item.slug })),
     });
   } catch (error) {
     return prismaErrorResponse(error);

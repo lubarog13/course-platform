@@ -351,7 +351,7 @@ model UserTestAnswerOption {
   optionId Int @map("option_id")
 
   answer UserTestAnswer     @relation(fields: [answerId], references: [id], onDelete: Cascade)
-  option TestQuestionOption @relation(fields: [optionId], references: [id])
+  option TestQuestionOption @relation(fields: [optionId], references: [id], onDelete: Cascade)
 
   @@unique([answerId, optionId])
   @@map("UserTestAnswerOption")

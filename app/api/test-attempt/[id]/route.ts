@@ -40,12 +40,12 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
     }
   } catch (error) {
     if (error instanceof Error) {
-      if (error.message === "Попытка не найдена") {
+      if (error.cause === "not_found") {
         return jsonError(error.message, 404);
       }
       if (
-        error.message === "Просмотр ответов отключён" ||
-        error.message === "Урок не является тестом"
+        error.cause === "no_access" ||
+        error.cause === "invalid"
       ) {
         return jsonError(error.message, 400);
       }
@@ -101,23 +101,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json(attempt);
   } catch (error) {
     if (error instanceof Error) {
-      if (error.message === "Попытка не найдена") {
+      if (error.cause === "not_found") {
         return jsonError(error.message, 404);
       }
-      if (error.message === "Нет доступа к проверке теста") {
+      if (error.cause === "no_access") {
         return jsonError(error.message, 403);
       }
       if (
-        error.message === "Попытка уже отправлена, ответы изменить нельзя" ||
-        error.message === "Урок не является тестом" ||
-        error.message === "Срок сдачи части курса истёк" ||
-        error.message === "Нельзя оценить незавершённую попытку" ||
-        error.message.startsWith("Вопрос ") ||
-        error.message.startsWith("Для ") ||
-        error.message.startsWith("Вариант ") ||
-        error.message.startsWith("Баллы за вопрос ") ||
-        error.message.startsWith("Поле ") ||
-        error.message.startsWith("scores[")
+        error.cause === "invalid"
       ) {
         return jsonError(error.message, 400);
       }

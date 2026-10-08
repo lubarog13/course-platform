@@ -23,7 +23,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       }
     const includeCorrect =
       request.nextUrl.searchParams.get("includeCorrect") === "1";
-    const lesson = await findLesson(parseNumericId(id), Number(session?.user?.id), session?.user?.role !== "student", includeCorrect);
+    const testIsTeacher = request.nextUrl.searchParams.get("testIsTeacher") === "1";
+    const lesson = await findLesson(parseNumericId(id), Number(session?.user?.id), session?.user?.role !== "student", testIsTeacher, includeCorrect);
     if (!lesson) {
       return jsonError("Урок не найден", 404);
     }
@@ -41,7 +42,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (!session?.user?.id) {
       return jsonError("Не авторизован", 401);
     }
-    const existing = await findLesson(lessonId, Number(session?.user?.id), session?.user?.role !== "student", true);
+    const existing = await findLesson(lessonId, Number(session?.user?.id), session?.user?.role !== "student", false, true);
     if (!existing) {
       return jsonError("Урок не найден", 404);
     }
@@ -83,7 +84,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
     });
 
-    const full = await findLesson(lessonId, Number(session?.user?.id), session?.user?.role !== "student", true);
+    const full = await findLesson(lessonId, Number(session?.user?.id), session?.user?.role !== "student", false, true);
     return NextResponse.json(full);
   } catch (error) {
     return prismaErrorResponse(error, "Урок");
@@ -103,7 +104,7 @@ export async function DELETE(_request: NextRequest, { params }: RouteParams) {
     }
     const lessonId = parseNumericId(id);
     const userId = Number(session?.user?.id);
-    const existing = await findLesson(lessonId, userId, session?.user?.role !== "student", true);
+    const existing = await findLesson(lessonId, userId, session?.user?.role !== "student", false, true);
     if (!existing) {
       return jsonError("Урок не найден", 404);
     }

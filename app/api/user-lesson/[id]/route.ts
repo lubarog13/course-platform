@@ -69,19 +69,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json(record);
   } catch (error) {
     if (error instanceof Error) {
-      if (error.message === "Прогресс урока не найден") {
+      if (error.cause === "lesson_not_found") {
         return jsonError(error.message, 404);
       }
-      if (
-        error.message.startsWith("Нет доступа") ||
-        error.message.startsWith("Студент")
-      ) {
+      if (error.cause === "no_access") {
         return jsonError(error.message, 403);
       }
       if (
-        error.message.startsWith("Поле") ||
-        error.message.startsWith("Нет полей") ||
-        error.message.startsWith("Ожидается")
+        error.cause === "invalid"
       ) {
         return jsonError(error.message, 400);
       }

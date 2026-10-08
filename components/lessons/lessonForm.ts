@@ -14,6 +14,27 @@ export const defaultVideo = {
   thumbnailUrl: "",
 };
 
+/** HTML input type="number" отдаёт строку; пустое → null */
+const nullableNumber = z.preprocess((value) => {
+  if (value === "" || value === null || value === undefined) return null;
+  if (typeof value === "number") return Number.isNaN(value) ? null : value;
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    if (!trimmed) return null;
+    const parsed = Number(trimmed);
+    return Number.isNaN(parsed) ? value : parsed;
+  }
+  return value;
+}, z.number().nullable());
+
+const requiredNumber = z.preprocess((value) => {
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isNaN(parsed) ? value : parsed;
+  }
+  return value;
+}, z.number());
+
 export const lessonFormSchema = z
   .object({
     name: z
@@ -22,10 +43,13 @@ export const lessonFormSchema = z
       .min(1, "Введите название урока")
       .max(200, "Название не длиннее 200 символов"),
     description: z.string().max(2000, "Описание не длиннее 2000 символов"),
+    points: requiredNumber.pipe(
+      z.number().int().min(0, "Количество баллов должно быть больше 0"),
+    ),
     textContent: z.string(),
     type: z.enum(["text", "video", "test"]),
     coursePartId: z.number().int().positive("Выберите часть курса"),
-    durationSeconds: z.number().nullable(),
+    durationSeconds: nullableNumber,
     sortOrder: z
       .number({ error: "Урок должен быть числом" })
       .int("Урок должен быть целым числом")
@@ -43,9 +67,14 @@ export const lessonFormSchema = z
       url: z.string(),
       platform: z.enum(videoPlatforms),
       title: z.string(),
-      durationSeconds: z.number().nullable(),
+      durationSeconds: nullableNumber,
       thumbnailUrl: z.string(),
     }),
+    passingScore: nullableNumber,
+    timeLimit: nullableNumber,
+    reviewEnabled: z.boolean().default(true),
+    manualGrading: z.boolean().default(false),
+    maxAttempts: nullableNumber.default(null),
   })
   .superRefine((data, ctx) => {
     if (data.type === "text" && !data.textContent.trim()) {
@@ -65,6 +94,39 @@ export const lessonFormSchema = z
         path: ["durationSeconds"],
         message: "Длительность не может быть отрицательной",
       });
+    }
+
+    if (data.type === "test") {
+      if (
+        data.maxAttempts != null &&
+        (Number.isNaN(data.maxAttempts) || data.maxAttempts < 1)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["maxAttempts"],
+          message: "Число попыток должно быть не меньше 1",
+        });
+      }
+      if (
+        data.passingScore != null &&
+        (Number.isNaN(data.passingScore) || data.passingScore < 0)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["passingScore"],
+          message: "Проходной балл не может быть отрицательным",
+        });
+      }
+      if (
+        data.timeLimit != null &&
+        (Number.isNaN(data.timeLimit) || data.timeLimit < 0)
+      ) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["timeLimit"],
+          message: "Время не может быть отрицательным",
+        });
+      }
     }
 
     if (data.type !== "video") return;
@@ -118,6 +180,7 @@ export function toLessonFormValues(lesson: LessonFullDto): LessonFormValues {
   return {
     name: lesson.name ?? "",
     description: lesson.description ?? "",
+    points: lesson.points ?? 0,
     textContent: lesson.textContent ?? "",
     type: lesson.type,
     coursePartId: lesson.coursePartId ?? 0,
@@ -140,5 +203,10 @@ export function toLessonFormValues(lesson: LessonFullDto): LessonFormValues {
     sortOrder: lesson.sortOrder ?? 1,
     publishedAt:
       publishedAt && !Number.isNaN(publishedAt.getTime()) ? publishedAt : null,
+    passingScore: lesson.passingScore ?? null,
+    timeLimit: lesson.timeLimitSeconds ?? null,
+    reviewEnabled: lesson.reviewEnabled ?? true,
+    manualGrading: lesson.manualGrading ?? false,
+    maxAttempts: lesson.maxAttempts ?? null,
   };
 }

@@ -41,11 +41,11 @@ function asOptionalDate(value: unknown, field: string): Date | null | undefined 
   if (value === undefined) return undefined;
   if (value === null) return null;
   if (typeof value !== "string" && typeof value !== "number") {
-    throw new Error(`Поле ${field} должно быть датой`);
+    throw new Error(`Поле ${field} должно быть датой`, { cause: "invalid" });
   }
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
-    throw new Error(`Поле ${field} должно быть корректной датой`);
+    throw new Error(`Поле ${field} должно быть корректной датой`, { cause: "invalid" });
   }
   return date;
 }
@@ -56,6 +56,7 @@ function asEnrollmentStatus(value: unknown, field: string): EnrollmentStatus {
     && status !== "pending") {
     throw new Error(
       `Поле ${field} должно быть одним из: pending, ${USER_COURSE_STATUS_VALUES.join(", ")}`,
+      { cause: "invalid" }
     );
   }
   return status as EnrollmentStatus;
@@ -86,7 +87,7 @@ export function parseEnrollmentUpdateBody(body: unknown): EnrollmentUpdateData {
   }
 
   if (Object.keys(data).length === 0) {
-    throw new Error("Нет полей для обновления");
+    throw new Error("Нет полей для обновления", { cause: "invalid" });
   }
   return data;
 }
@@ -116,7 +117,7 @@ export function parseUserCoursePartUpdateBody(body: unknown): UserCoursePartUpda
   }
 
   if (Object.keys(data).length === 0) {
-    throw new Error("Нет полей для обновления");
+    throw new Error("Нет полей для обновления", { cause: "invalid" });
   }
   return data;
 }
@@ -148,7 +149,7 @@ export function parseUserLessonUpdateBody(body: unknown): UserLessonUpdateData {
   }
 
   if (Object.keys(data).length === 0) {
-    throw new Error("Нет полей для обновления");
+    throw new Error("Нет полей для обновления", { cause: "invalid" });
   }
   return data;
 }
@@ -240,28 +241,28 @@ export async function updateEnrollment(
 ) {
   const enrollment = await findEnrollment(id);
   if (!enrollment) {
-    throw new Error("Запись на курс не найдена");
+    throw new Error("Запись на курс не найдена", { cause: "not_found" });
   }
 
   const isOwner = enrollment.userId === actor.id;
   const isStaff = await isCourseStaff(enrollment.courseId, actor.id, actor.role);
 
   if (!isOwner && !isStaff) {
-    throw new Error("Нет доступа к этой записи");
+    throw new Error("Нет доступа к этой записи", { cause: "no_access" });
   }
 
   if (data.status !== undefined) {
     if (actor.role === "student" || (!isStaff && isOwner)) {
       if (!STUDENT_ALLOWED_STATUSES.includes(data.status as (typeof STUDENT_ALLOWED_STATUSES)[number])) {
-        throw new Error("Студент может изменить статус только на dropped");
+        throw new Error("Студент может изменить статус только на dropped", { cause: "no_access" });
       }
       if (!isOwner) {
-        throw new Error("Нет доступа к этой записи");
+        throw new Error("Нет доступа к этой записи", { cause: "no_access" });
       }
     } else if (isStaff) {
       const allowed = ["pending", ...STAFF_ALLOWED_STATUSES] as string[];
       if (!allowed.includes(data.status)) {
-        throw new Error(`Недопустимый статус: ${data.status}`);
+        throw new Error(`Недопустимый статус: ${data.status}`, { cause: "invalid" });
       }
     } else {
       throw new Error("Нет доступа к изменению статуса");
@@ -275,7 +276,7 @@ export async function updateEnrollment(
       data.deadline !== undefined ||
       data.endDate !== undefined
     ) {
-      throw new Error("Студент может обновить только статус (dropped) или lastAccessedAt");
+      throw new Error("Студент может обновить только статус (dropped) или lastAccessedAt", { cause: "no_access" });
     }
   }
 
@@ -337,7 +338,7 @@ export async function updateUserCoursePart(
 ) {
   const record = await findUserCoursePart(id);
   if (!record) {
-    throw new Error("Прогресс раздела не найден");
+    throw new Error("Прогресс раздела не найден", { cause: "course_part_not_found" });
   }
 
   const isOwner = record.userId === actor.id;
@@ -348,11 +349,11 @@ export async function updateUserCoursePart(
   );
 
   if (!isOwner && !isStaff) {
-    throw new Error("Нет доступа к этой записи");
+    throw new Error("Нет доступа к этой записи", { cause: "no_access" });
   }
 
   if (!isStaff && isOwner && data.deadline !== undefined) {
-    throw new Error("Студент не может менять дедлайн раздела");
+    throw new Error("Студент не может менять дедлайн раздела", { cause: "no_access" });
   }
 
   const updatePayload: Prisma.UserCoursePartUpdateInput = {};
@@ -415,7 +416,7 @@ export async function updateUserLesson(
 ) {
   const record = await findUserLesson(id);
   if (!record) {
-    throw new Error("Прогресс урока не найден");
+    throw new Error("Прогресс урока не найден", { cause: "lesson_not_found" });
   }
 
   const isOwner = record.userId === actor.id;
@@ -426,11 +427,11 @@ export async function updateUserLesson(
   );
 
   if (!isOwner && !isStaff) {
-    throw new Error("Нет доступа к этой записи");
+    throw new Error("Нет доступа к этой записи", { cause: "no_access" });
   }
 
   if (!isStaff && isOwner && data.points !== undefined) {
-    throw new Error("Студент не может менять баллы урока");
+    throw new Error("Студент не может менять баллы урока", { cause: "no_access" });
   }
 
   const updatePayload: Prisma.UserLessonUpdateInput = {};

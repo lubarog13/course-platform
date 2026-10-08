@@ -86,6 +86,14 @@ export type CoursePartWriteData = {
   sortOrder?: number;
 };
 
+export type CoursePartEditData = {
+  id?: number;
+  name?: string;
+  description?: string | null;
+  sortOrder?: number;
+  deadlineDays?: number | null;
+};
+
 export function parseCoursePartBody(
   body: unknown,
   mode: "create" | "update",

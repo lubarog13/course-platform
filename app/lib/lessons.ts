@@ -81,15 +81,18 @@ export function serializeQuestion(
   };
 }
 
-export async function findLesson(id: number, userId: number, isTeacher: boolean, includeCorrectAnswers = false) {
+export async function findLesson(id: number, userId: number, isTeacher: boolean, testIsTeacher: boolean, includeCorrectAnswers = false) {
   let filters = {
     where: {userId: userId},
+  }
+  const teacherFilters = {
+      coursePart: { course: { instructors: { some: { userId } } } }
   }
   if (isTeacher) {
     filters = {} as any;
   }
   const lesson = await prisma.lesson.findFirst({
-    where: { id, deletedAt: null },
+    where: { id, deletedAt: null, ...(testIsTeacher ? teacherFilters : {}) },
     include: {
       video: true,
       attachment: true,
@@ -196,17 +199,17 @@ export function parseLessonBody(
       ? asRequiredString(raw.name, "name")
       : asOptionalString(raw.name, "name") ?? undefined;
   if (name && name.length > 1000) {
-    throw new Error("Название урока не может быть больше 1000 символов");
+    throw new Error("Название урока не может быть больше 1000 символов", { cause: "invalid" });
   }
   const description = asOptionalString(raw.description, "description");
   if (description && description.length > 1000) {
-    throw new Error("Описание урока не может быть больше 1000 символов");
+    throw new Error("Описание урока не может быть больше 1000 символов", { cause: "invalid" });
   }
   const type =
     mode === "create"
       ? asLessonType(raw.type) ??
         (() => {
-          throw new Error("Поле type обязательно");
+          throw new Error("Поле type обязательно", { cause: "invalid" });
         })()
       : asLessonType(raw.type);
   const coursePartId =
@@ -219,7 +222,7 @@ export function parseLessonBody(
       : asOptionalInt(raw.sortOrder, "sortOrder", 0);
   const textContent = asOptionalString(raw.textContent, "textContent");
   if (textContent && textContent.length > 10000) {
-    throw new Error("Текст урока не может быть больше 10000 символов");
+    throw new Error("Текст урока не может быть больше 10000 символов", { cause: "invalid" });
   }
   const data: LessonWriteData = {
     ...(coursePartId !== undefined && coursePartId !== null
@@ -285,10 +288,10 @@ export function parseLessonBody(
   const effectiveType = data.type;
   if (mode === "create") {
     if (effectiveType === "text" && !data.textContent) {
-      throw new Error("Для type=text нужно поле textContent");
+      throw new Error("Для type=text нужно поле textContent", { cause: "invalid" });
     }
     if (effectiveType === "video" && !data.videoId) {
-      throw new Error("Для type=video нужно поле videoId");
+      throw new Error("Для type=video нужно поле videoId", { cause: "invalid" });
     }
   }
 
@@ -297,7 +300,7 @@ export function parseLessonBody(
     effectiveType !== undefined &&
     effectiveType !== "test"
   ) {
-    throw new Error("Поле testQuestions допустимо только для type=test");
+    throw new Error("Поле testQuestions допустимо только для type=test", { cause: "invalid" });
   }
 
   return data;
@@ -328,6 +331,7 @@ function asQuestionType(value: unknown): QuestionType | undefined {
   if (typeof value !== "string" || !values.includes(value as QuestionType)) {
     throw new Error(
       "Поле type должно быть single_choice, multiple_choice или text",
+      { cause: "invalid" }
     );
   }
   return value as QuestionType;
@@ -347,17 +351,18 @@ export type TestQuestionWriteData = {
   sortOrder?: number;
   required?: boolean;
   attachmentNeeded?: boolean;
+  textAnswer?: string | null;
   options?: QuestionOptionWrite[];
 };
 
 function parseOptions(value: unknown): QuestionOptionWrite[] | undefined {
   if (value === undefined) return undefined;
   if (!Array.isArray(value)) {
-    throw new Error("Поле options должно быть массивом");
+    throw new Error("Поле options должно быть массивом", { cause: "invalid" });
   }
   return value.map((item, index) => {
     if (item === null || typeof item !== "object" || Array.isArray(item)) {
-      throw new Error(`options[${index}] должен быть объектом`);
+      throw new Error(`options[${index}] должен быть объектом`, { cause: "invalid" });
     }
     const raw = item as Record<string, unknown>;
     return {
@@ -370,31 +375,32 @@ function parseOptions(value: unknown): QuestionOptionWrite[] | undefined {
 
 function parseNestedTestQuestions(value: unknown): NestedTestQuestionWrite[] {
   if (!Array.isArray(value)) {
-    throw new Error("Поле testQuestions должно быть массивом");
+    throw new Error("Поле testQuestions должно быть массивом", { cause: "invalid" });
   }
 
   const questions = value.map((item, index) => {
     if (item === null || typeof item !== "object" || Array.isArray(item)) {
-      throw new Error(`testQuestions[${index}] должен быть объектом`);
+      throw new Error(`testQuestions[${index}] должен быть объектом`, { cause: "invalid" });
     }
     const raw = item as Record<string, unknown>;
     const type =
       asQuestionType(raw.type) ??
       (() => {
-        throw new Error(`testQuestions[${index}].type обязательно`);
+        throw new Error(`testQuestions[${index}].type обязательно`, { cause: "invalid" });
       })();
     const options = parseOptions(raw.options) ?? [];
     const id = asOptionalId(raw.id, `testQuestions[${index}].id`);
 
     if (type !== "text" && options.length === 0) {
-      throw new Error(`testQuestions[${index}]: для choice-вопроса нужны options`);
+      throw new Error(`testQuestions[${index}]: для choice-вопроса нужны options`, { cause: "invalid" });
     }
     if (type === "text" && options.length > 0) {
-      throw new Error(`testQuestions[${index}]: для type=text options не нужны`);
+      throw new Error(`testQuestions[${index}]: для type=text options не нужны`, { cause: "invalid" });
     }
     if (type !== "text" && !options.some((option) => option.isCorrect)) {
       throw new Error(
         `testQuestions[${index}]: нужен хотя бы один правильный вариант`,
+        { cause: "invalid" }
       );
     }
 
@@ -421,13 +427,30 @@ function parseNestedTestQuestions(value: unknown): NestedTestQuestionWrite[] {
 
   const sortOrders = questions.map((question) => question.sortOrder);
   if (new Set(sortOrders).size !== sortOrders.length) {
-    throw new Error("У вопросов sortOrder должен быть уникальным");
+    throw new Error("У вопросов sortOrder должен быть уникальным", { cause: "invalid" });
   }
 
   return questions;
 }
 
 type TxClient = Prisma.TransactionClient;
+
+async function deleteOptionsForQuestions(tx: TxClient, questionIds: number[]) {
+  if (questionIds.length === 0) return;
+  const options = await tx.testQuestionOption.findMany({
+    where: { questionId: { in: questionIds } },
+    select: { id: true },
+  });
+  const optionIds = options.map((option) => option.id);
+  if (optionIds.length > 0) {
+    await tx.userTestAnswerOption.deleteMany({
+      where: { optionId: { in: optionIds } },
+    });
+  }
+  await tx.testQuestionOption.deleteMany({
+    where: { questionId: { in: questionIds } },
+  });
+}
 
 export async function replaceLessonQuestions(
   lessonId: number,
@@ -458,7 +481,9 @@ export async function replaceLessonQuestions(
     .filter((id) => !keptIds.has(id));
 
   if (toDelete.length > 0) {
-    await tx.testQuestionOption.deleteMany({
+    // сначала ответы студентов на опции, потом опции, потом ответы и вопросы
+    await deleteOptionsForQuestions(tx, toDelete);
+    await tx.userTestAnswer.deleteMany({
       where: { questionId: { in: toDelete } },
     });
     await tx.testQuestion.deleteMany({
@@ -486,9 +511,7 @@ export async function replaceLessonQuestions(
         attachmentNeeded: question.attachmentNeeded,
       },
     });
-    await tx.testQuestionOption.deleteMany({
-      where: { questionId: question.id! },
-    });
+    await deleteOptionsForQuestions(tx, [question.id!]);
     if (question.options.length > 0) {
       await tx.testQuestionOption.createMany({
         data: question.options.map((option) => ({
@@ -541,7 +564,7 @@ export function parseTestQuestionBody(
     mode === "create"
       ? asQuestionType(raw.type) ??
         (() => {
-          throw new Error("Поле type обязательно");
+          throw new Error("Поле type обязательно", { cause: "invalid" });
         })()
       : asQuestionType(raw.type);
   const lessonId =
@@ -565,10 +588,10 @@ export function parseTestQuestionBody(
     effectiveType !== "text" &&
     (!options || options.length === 0)
   ) {
-    throw new Error("Для choice-вопроса нужны options");
+    throw new Error("Для choice-вопроса нужны options", { cause: "invalid" });
   }
   if (effectiveType === "text" && options && options.length > 0) {
-    throw new Error("Для type=text options не нужны");
+    throw new Error("Для type=text options не нужны", { cause: "invalid" });
   }
   if (
     options &&
@@ -576,7 +599,7 @@ export function parseTestQuestionBody(
     effectiveType !== "text" &&
     !options.some((option) => option.isCorrect)
   ) {
-    throw new Error("Нужен хотя бы один правильный вариант");
+    throw new Error("Нужен хотя бы один правильный вариант", { cause: "invalid" });
   }
 
   return {
@@ -617,17 +640,19 @@ export async function replaceQuestionOptions(
   questionId: number,
   options: QuestionOptionWrite[],
 ) {
-  await prisma.$transaction([
-    prisma.testQuestionOption.deleteMany({ where: { questionId } }),
-    prisma.testQuestionOption.createMany({
-      data: options.map((option) => ({
-        questionId,
-        text: option.text,
-        isCorrect: option.isCorrect,
-        sortOrder: option.sortOrder,
-      })),
-    }),
-  ]);
+  await prisma.$transaction(async (tx) => {
+    await deleteOptionsForQuestions(tx, [questionId]);
+    if (options.length > 0) {
+      await tx.testQuestionOption.createMany({
+        data: options.map((option) => ({
+          questionId,
+          text: option.text,
+          isCorrect: option.isCorrect,
+          sortOrder: option.sortOrder,
+        })),
+      });
+    }
+  });
 }
 
 // --- Попытки теста ---
@@ -685,12 +710,12 @@ export type TestAttemptReturnData = {
 export function parseTestAttemptAnswersBody(body: unknown): TestAttemptPatchData {
   const raw = requireObject(body);
   if (!Array.isArray(raw.answers)) {
-    throw new Error("Поле answers должно быть массивом");
+    throw new Error("Поле answers должно быть массивом", { cause: "invalid" });
   }
 
   const answers = raw.answers.map((item, index) => {
     if (item === null || typeof item !== "object" || Array.isArray(item)) {
-      throw new Error(`answers[${index}] должен быть объектом`);
+      throw new Error(`answers[${index}] должен быть объектом`, { cause: "invalid" });
     }
     const row = item as Record<string, unknown>;
     const questionId = asRequiredId(row.questionId, `answers[${index}].questionId`);
@@ -703,7 +728,7 @@ export function parseTestAttemptAnswersBody(body: unknown): TestAttemptPatchData
     let optionIds: number[] | undefined;
     if (row.optionIds !== undefined) {
       if (!Array.isArray(row.optionIds)) {
-        throw new Error(`answers[${index}].optionIds должен быть массивом`);
+        throw new Error(`answers[${index}].optionIds должен быть массивом`, { cause: "invalid" });
       }
       optionIds = row.optionIds.map((optionId, optionIndex) =>
         asRequiredId(optionId, `answers[${index}].optionIds[${optionIndex}]`),
@@ -729,18 +754,18 @@ export function parseTestAttemptAnswersBody(body: unknown): TestAttemptPatchData
 export function parseTeacherGradeBody(body: unknown): TeacherGradePatchData {
   const raw = requireObject(body);
   if (!Array.isArray(raw.scores)) {
-    throw new Error("Поле scores должно быть массивом");
+    throw new Error("Поле scores должно быть массивом", { cause: "invalid" });
   }
 
   const scores = raw.scores.map((item, index) => {
     if (item === null || typeof item !== "object" || Array.isArray(item)) {
-      throw new Error(`scores[${index}] должен быть объектом`);
+      throw new Error(`scores[${index}] должен быть объектом`, { cause: "invalid" });
     }
     const row = item as Record<string, unknown>;
     const questionId = asRequiredId(row.questionId, `scores[${index}].questionId`);
     const score = asRequiredInt(row.score, `scores[${index}].score`);
     if (score < 0) {
-      throw new Error(`scores[${index}].score не может быть отрицательным`);
+      throw new Error(`scores[${index}].score не может быть отрицательным`, { cause: "invalid" });
     }
     return { questionId, score } satisfies TeacherScoreWrite;
   });
@@ -757,7 +782,7 @@ export async function findTestAttempt(id: number, resultData: TestAttemptReturnD
     include: attemptInclude,
   });
   if (!attempt) {
-    throw new Error("Попытка не найдена");
+    throw new Error("Попытка не найдена", { cause: "not_found" });
   }
   return {
     ...attempt,
@@ -809,7 +834,7 @@ export async function findUserCoursePartDeadline(
 export function assertCoursePartDeadlineAllows(deadline: Date | null | undefined) {
   if (!deadline) return;
   if (deadline.getTime() < Date.now()) {
-    throw new Error("Срок сдачи части курса истёк");
+    throw new Error("Срок сдачи части курса истёк", { cause: "invalid" });
   }
 }
 
@@ -825,10 +850,10 @@ export async function startTestAttempt(lessonId: number, userId: number) {
     },
   });
   if (!lesson) {
-    throw new Error("Урок не найден");
+    throw new Error("Урок не найден", { cause: "not_found" });
   }
   if (lesson.type !== "test") {
-    throw new Error("Попытку можно начать только для урока типа test");
+    throw new Error("Попытку можно начать только для урока типа Тест", { cause: "invalid" });
   }
 
   const deadline = await findUserCoursePartDeadline(userId, lessonId);
@@ -847,7 +872,7 @@ export async function startTestAttempt(lessonId: number, userId: number) {
     where: { userId, lessonId },
   });
   if (lesson.maxAttempts != null && attemptCount >= lesson.maxAttempts) {
-    throw new Error("Исчерпано максимальное число попыток");
+    throw new Error("Исчерпано максимальное число попыток", { cause: "invalid" });
   }
 
   return prisma.testAttempt.create({
@@ -879,10 +904,10 @@ export async function rateTestAttempt(
     },
   });
   if (!test) {
-    throw new Error("Тест не найден");
+    throw new Error("Тест не найден", { cause: "not_found" });
   }
   if (test.type !== "test") {
-    throw new Error("Тест не является тестом");
+    throw new Error("Тест не является тестом", { cause: "invalid" });
   }
 
   return buildAttemptReview({
@@ -1002,16 +1027,16 @@ export async function getTestAttemptForReview(attemptId: number, userId: number)
   });
 
   if (!attempt) {
-    throw new Error("Попытка не найдена");
+    throw new Error("Попытка не найдена", { cause: "not_found" });
   }
   if (!attempt.submittedAt) {
-    throw new Error("Попытка ещё не завершена");
+    throw new Error("Попытка ещё не завершена", { cause: "invalid" });
   }
   if (attempt.lesson.type !== "test") {
-    throw new Error("Урок не является тестом");
+    throw new Error("Урок не является тестом", { cause: "invalid" });
   }
   if (!attempt.lesson.reviewEnabled) {
-    throw new Error("Просмотр ответов отключён");
+    throw new Error("Просмотр ответов отключён", { cause: "invalid" });
   }
 
   const writeAnswers: TestAnswerWrite[] = attempt.answers.map((answer) => ({
@@ -1082,13 +1107,13 @@ export async function saveTestAttemptAnswers(
   });
 
   if (!attempt) {
-    throw new Error("Попытка не найдена");
+    throw new Error("Попытка не найдена", { cause: "not_found" });
   }
   if (attempt.submittedAt) {
-    throw new Error("Попытка уже отправлена, ответы изменить нельзя");
+    throw new Error("Попытка уже отправлена, ответы изменить нельзя", { cause: "invalid" });
   }
   if (attempt.lesson.type !== "test") {
-    throw new Error("Урок не является тестом");
+    throw new Error("Урок не является тестом", { cause: "invalid" });
   }
 
   const deadline = await findUserCoursePartDeadline(userId, attempt.lessonId);
@@ -1104,18 +1129,19 @@ export async function saveTestAttemptAnswers(
   for (const answer of data.answers) {
     const question = questionById.get(answer.questionId);
     if (!question) {
-      throw new Error(`Вопрос ${answer.questionId} не принадлежит этому тесту`);
+      throw new Error(`Вопрос ${answer.questionId} не принадлежит этому тесту`, { cause: "invalid" });
     }
 
     if (question.type === "text") {
       if (answer.optionIds && answer.optionIds.length > 0) {
-        throw new Error(`Для текстового вопроса ${question.id} optionIds не нужны`);
+        throw new Error(`Для текстового вопроса ${question.id} опции не нужны`, { cause: "invalid" });
       }
     } else {
       const optionIds = answer.optionIds ?? [];
       if (question.type === "single_choice" && optionIds.length > 1) {
         throw new Error(
-          `Для single_choice вопроса ${question.id} нужен один вариант`,
+          `Для вопроса ${question.id} нужен один вариант`,
+          { cause: "invalid" }
         );
       }
       const validOptionIds = new Set(question.options.map((option) => option.id));
@@ -1123,6 +1149,7 @@ export async function saveTestAttemptAnswers(
         if (!validOptionIds.has(optionId)) {
           throw new Error(
             `Вариант ${optionId} не принадлежит вопросу ${question.id}`,
+            { cause: "invalid" }
           );
         }
       }
@@ -1185,7 +1212,7 @@ export async function saveTestAttemptAnswers(
       lastAttempt: isLastAttempt,
     });
     if (!result) {
-      throw new Error("Не удалось оценить попытку");
+      throw new Error("Не удалось оценить попытку", { cause: "invalid" });
     }
 
 
@@ -1259,14 +1286,14 @@ async function assertLessonCourseStaff(
     },
   });
   if (!lesson) {
-    throw new Error("Урок не найден");
+    throw new Error("Урок не найден", { cause: "not_found" });
   }
   if (lesson.type !== "test") {
-    throw new Error("Урок не является тестом");
+    throw new Error("Урок не является тестом", { cause: "invalid" });
   }
   const staff = await isCourseStaff(lesson.coursePart.courseId, actor.id, actor.role);
   if (!staff) {
-    throw new Error("Нет доступа к проверке теста");
+    throw new Error("Нет доступа к проверке теста", { cause: "no_access" });
   }
   return lesson;
 }
@@ -1290,7 +1317,7 @@ export async function getLatestSubmittedAttemptForTeacher(
   });
 
   if (!attempt) {
-    throw new Error("Завершённая попытка не найдена");
+    throw new Error("Завершённая попытка не найдена", { cause: "not_found" });
   }
 
   return attempt;
@@ -1341,13 +1368,13 @@ export async function saveTeacherTestScores(
   });
 
   if (!attempt) {
-    throw new Error("Попытка не найдена");
+    throw new Error("Попытка не найдена", { cause: "not_found" });
   }
   if (attempt.lesson.type !== "test") {
-    throw new Error("Урок не является тестом");
+    throw new Error("Урок не является тестом", { cause: "invalid" });
   }
   if (!attempt.submittedAt) {
-    throw new Error("Нельзя оценить незавершённую попытку");
+    throw new Error("Нельзя оценить незавершённую попытку", { cause: "invalid" });
   }
 
   const staff = await isCourseStaff(
@@ -1356,7 +1383,7 @@ export async function saveTeacherTestScores(
     actor.role,
   );
   if (!staff) {
-    throw new Error("Нет доступа к проверке теста");
+    throw new Error("Нет доступа к проверке теста", { cause: "no_access" });
   }
 
   const questionById = new Map(
@@ -1366,11 +1393,12 @@ export async function saveTeacherTestScores(
   for (const row of data.scores) {
     const question = questionById.get(row.questionId);
     if (!question) {
-      throw new Error(`Вопрос ${row.questionId} не принадлежит этому тесту`);
+      throw new Error(`Вопрос ${row.questionId} не принадлежит этому тесту`, { cause: "invalid" });
     }
     if (row.score > question.score) {
       throw new Error(
         `Баллы за вопрос ${row.questionId} не могут превышать ${question.score}`,
+        { cause: "invalid" }
       );
     }
   }

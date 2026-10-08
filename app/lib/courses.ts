@@ -1,7 +1,7 @@
 import {
   Prisma,
   type Course,
-  type File,
+  type File as FileModel,
   type Category,
   type CourseInstructor,
   type User,
@@ -12,6 +12,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { CourseLevel, type Instructor } from "@/app/lib/models";
 import { prisma } from "@/app/lib/prisma";
+import { CoursePartEditData } from "@/app/lib/courseParts";
 
 const SLUG_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -83,7 +84,7 @@ export const courseSingleInclude = {
 } satisfies Prisma.CourseInclude;
 
 export type CourseRecord = Course & {
-  coverFile: File | null;
+  coverFile: FileModel | null;
   category: Category | null;
   instructors: (CourseInstructor & {
     user: Omit<User, "passwordHash">;
@@ -162,6 +163,11 @@ export type CourseListQuery = {
   needEnrollment?: boolean | null;
   enrolled?: number | boolean | null;
 };
+
+export type CourseFullDto = Course & {
+  coverFile: FileModel | null;
+  courseParts: CoursePartEditData[];
+}
 
 function parseIntParam(value: string | null | undefined, fallback: number, min: number, max: number) {
   const parsed = Number(value);

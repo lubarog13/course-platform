@@ -71,16 +71,13 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         return jsonError(error.message, 404);
       }
       if (
-        error.message.startsWith("Нет доступа") ||
-        error.message.startsWith("Студент") ||
-        error.message.startsWith("Недопустимый")
+        error.cause === "not_found" ||
+        error.cause === 'no_access'
       ) {
         return jsonError(error.message, 403);
       }
       if (
-        error.message.startsWith("Поле") ||
-        error.message.startsWith("Нет полей") ||
-        error.message.startsWith("Ожидается")
+        error.cause === "invalid"
       ) {
         return jsonError(error.message, 400);
       }

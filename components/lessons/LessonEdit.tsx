@@ -7,7 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 
 import type { LessonFullDto, TestQuestionDto } from "@/app/lib/lessons";
 import type { File as FileModel, Video } from "@/app/lib/models";
-import { CoursePartExtendedDto } from "@/app/lib/courseParts";
+import type { CoursePartExtendedDto } from "@/app/lib/courseParts";
 import { Kbd } from "@/components/ui/kbd";
 import { ForwardRefEditor } from "@/components/base/ForwardRefEditor";
 import FileUploader from "@/components/base/FileUploader";
@@ -25,11 +25,18 @@ import {
   toLessonFormValues,
   type LessonFormValues,
 } from "./lessonForm";
+import {
+  clearLessonEditDraft,
+  loadLessonEditDraft,
+  saveLessonEditDraft,
+} from "./lessonEditDraft";
 import { useHotkeys } from "react-hotkeys-hook";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
 import { FileIcon, PlusIcon, XIcon } from "lucide-react";
 import TestQuestionEdit from "./TestQuestionEdit";
 import { DragDropProvider } from "@dnd-kit/react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 
 type LessonEditProps = {
@@ -54,6 +61,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
+  const [draftRestoredAt, setDraftRestoredAt] = useState<Date | null>(null);
   const [publishedAt, setPublishedAt] = useState<Date | null>(
     lesson.publishedAt ? new Date(lesson.publishedAt as string | Date) : null,
   );
@@ -72,6 +80,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
     setValue,
     getValues,
     control,
+    watch,
     formState: { errors, isDirty },
   } = form;
 
@@ -84,18 +93,81 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
   const [testQuestions, setTestQuestions] = useState<TestQuestionDto[]>(lesson.testQuestions || []);
 
   const [questionsChanged, setQuestionsChanged] = useState(false);
+  const draftLessonIdRef = useRef<number>(lesson.id);
+  const draftTimerRef = useRef<number | null>(null);
+
   useEffect(() => {
     if (openedLessonId.current === lesson.id) return;
     openedLessonId.current = lesson.id;
+    draftLessonIdRef.current = lesson.id;
+
+    const draft = loadLessonEditDraft(userId, lesson.id);
+    if (draft) {
+      reset(draft.values);
+      editorRef.current?.setMarkdown(draft.values.textContent);
+      setPublishedAt(
+        draft.publishedAt ? new Date(draft.publishedAt) : draft.values.publishedAt,
+      );
+      setTestQuestions(draft.testQuestions ?? []);
+      setQuestionsChanged(true);
+      setDraftRestoredAt(new Date(draft.updatedAt));
+      setSavedAt(null);
+      setError(null);
+      return;
+    }
+
     const values = toLessonFormValues(lesson);
     reset(values);
     editorRef.current?.setMarkdown(values.textContent);
     setPublishedAt(values.publishedAt);
     setTestQuestions(lesson.testQuestions);
+    setQuestionsChanged(false);
+    setDraftRestoredAt(null);
     setSavedAt(null);
     setError(null);
-  }, [lesson, reset]);
+  }, [lesson, reset, userId]);
 
+  // Автосохранение черновика в localStorage
+  useEffect(() => {
+    if (!isDirty && !questionsChanged && !draftRestoredAt) return;
+
+    const persist = () => {
+      saveLessonEditDraft(userId, draftLessonIdRef.current, {
+        values: {
+          ...getValues(),
+          textContent: editorRef.current?.getMarkdown() ?? getValues("textContent"),
+        },
+        testQuestions,
+        publishedAt,
+      });
+    };
+
+    const schedule = () => {
+      if (draftTimerRef.current != null) {
+        window.clearTimeout(draftTimerRef.current);
+      }
+      draftTimerRef.current = window.setTimeout(persist, 400);
+    };
+
+    const subscription = watch(() => schedule());
+    schedule();
+
+    return () => {
+      subscription.unsubscribe();
+      if (draftTimerRef.current != null) {
+        window.clearTimeout(draftTimerRef.current);
+      }
+    };
+  }, [
+    watch,
+    getValues,
+    userId,
+    testQuestions,
+    publishedAt,
+    isDirty,
+    questionsChanged,
+    draftRestoredAt,
+  ]);
   const fetchCourseParts = async (signal: AbortSignal) => {
     await fetch(`/api/course-part?userId=${userId}`)
         .then(res => res.json())
@@ -265,11 +337,16 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
       const saved = body as LessonFullDto;
       const formValues = toLessonFormValues(saved);
       // Prevent the lesson-prop effect from treating create→id as a fresh open.
+      clearLessonEditDraft(userId, draftLessonIdRef.current);
       openedLessonId.current = saved.id;
+      draftLessonIdRef.current = saved.id;
+      clearLessonEditDraft(userId, saved.id);
       reset(formValues);
       editorRef.current?.setMarkdown(formValues.textContent);
       setPublishedAt(formValues.publishedAt);
       setTestQuestions(saved.testQuestions);
+      setQuestionsChanged(false);
+      setDraftRestoredAt(null);
       setSavedAt(new Date());
       onSaved?.(saved);
     } catch (err) {
@@ -310,16 +387,28 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
               <Badge variant="secondary">{typeLabel(type)}</Badge>
             </div>
             <p className="text-muted-foreground text-sm">
-              {isDirty
-                ? <>Есть несохранённые изменения <Kbd>Ctrl+S</Kbd></>
+              {isDirty || questionsChanged
+                ? <>Есть несохранённые изменения <Kbd>Ctrl+S</Kbd>
+                  {draftRestoredAt
+                    ? ` · черновик (${draftRestoredAt.toLocaleTimeString("ru-RU")})`
+                    : " · черновик сохраняется локально"}
+                  </>
                 : savedAt
                   ? `Сохранено в ${savedAt.toLocaleTimeString("ru-RU")}`
-                  : "Изменения ещё не сохранялись"}
+                  : draftRestoredAt
+                    ? `Восстановлен черновик от ${draftRestoredAt.toLocaleTimeString("ru-RU")}`
+                    : "Изменения ещё не сохранялись"}
             </p>
           </div>
           <div className="flex items-center gap-2">
-          <Button type="submit" disabled={(saving || !isDirty) && (type === "test" && testQuestions.length === 0)}>
-            {saving ? "Сохранение…" : "Сохранить"}
+          <Button
+            type="submit"
+            disabled={
+              saving ||
+              (!isDirty && !questionsChanged && !draftRestoredAt) ||
+              (type === "test" && testQuestions.length === 0)
+            }
+          >            {saving ? "Сохранение…" : "Сохранить"}
           </Button>
           {savedAt && !isDirty && (
             <Button
@@ -382,6 +471,18 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
         </div>
 
         <div className="grid gap-4">
+          <Field>
+            <FieldLabel htmlFor="lesson-points">Количество баллов за урок</FieldLabel>
+            <Input
+              id="lesson-points"
+              aria-invalid={!!errors.points}
+              placeholder="Количество баллов за урок"
+              type="number"
+              min={0}
+              {...register("points", { valueAsNumber: true })}
+            />
+            <FieldError errors={[errors.points]} />
+          </Field>
           <Field data-invalid={!!errors.name || undefined}>
             <FieldLabel htmlFor="lesson-name">Название</FieldLabel>
             <Input
@@ -540,6 +641,106 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
             />
           )}
           {type === "test" && (
+            <>
+            <div className="flex flex-col gap-4 sm:grid sm:grid-cols-2">
+            <Field data-invalid={!!errors.passingScore || undefined}>
+              <FieldLabel htmlFor="lesson-points">Проходной балл</FieldLabel>
+              <Input
+                id="lesson-passing-score"
+                aria-invalid={!!errors.passingScore}
+                placeholder="Проходной балл"
+                type="number"
+                min={0}
+                {...register("passingScore", {
+                  setValueAs: (value) =>
+                    value === "" || value === null || value === undefined
+                      ? null
+                      : Number(value),
+                })}
+              />
+              <FieldError errors={[errors.passingScore]} />
+            </Field>
+            <Field data-invalid={!!errors.timeLimit || undefined}>
+              <FieldLabel htmlFor="lesson-time-limit">Время на прохождение (секунды)</FieldLabel>
+              <Input
+                id="lesson-time-limit"
+                aria-invalid={!!errors.timeLimit}
+                placeholder="Время на прохождение (секунды)"
+                type="number"
+                min={0}
+                {...register("timeLimit", {
+                  setValueAs: (value) =>
+                    value === "" || value === null || value === undefined
+                      ? null
+                      : Number(value),
+                })}
+              />
+              <FieldError errors={[errors.timeLimit]} />
+            </Field>
+              <div className="flex items-center gap-2">
+              <Checkbox
+                id="lesson-review-enabled"
+                aria-invalid={!!errors.reviewEnabled}
+                checked={getValues("reviewEnabled")}
+                onCheckedChange={(checked) => {
+                  setValue("reviewEnabled", checked === true, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                }}
+              />
+                            <Label htmlFor="lesson-review-enabled">Разрешить просмотр ответов</Label>
+
+              </div>
+              <div className="flex items-center gap-2">
+              <Checkbox
+                id="lesson-manual-grading"
+                aria-invalid={!!errors.manualGrading}
+                checked={getValues("manualGrading")}
+                onCheckedChange={(checked) => {
+                  setValue("manualGrading", checked === true, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                }}
+              />
+                            <Label htmlFor="lesson-manual-grading">Проверка преподавателем</Label>
+
+              </div>
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="lesson-max-attempts"
+                aria-invalid={!!errors.maxAttempts}
+                checked={!getValues("maxAttempts")}
+                onCheckedChange={(checked) => {
+                  setValue("maxAttempts", checked === true ? null : 1, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                }}
+              />
+              <Label htmlFor="lesson-max-attempts">Количество попыток не ограничено</Label>
+            </div> 
+            {getValues("maxAttempts") !== null && (
+            <Field data-invalid={!!errors.maxAttempts || undefined}>
+              <FieldLabel htmlFor="lesson-max-attempts">Максимальное количество попыток</FieldLabel>
+              <Input
+                id="lesson-max-attempts"
+                aria-invalid={!!errors.maxAttempts}
+                placeholder="Максимальное количество попыток"
+                type="number"
+                min={1}
+                {...register("maxAttempts", {
+                  setValueAs: (value) =>
+                    value === "" || value === null || value === undefined
+                      ? null
+                      : Number(value),
+                })}
+              />
+              <FieldError errors={[errors.maxAttempts]} />
+            </Field>
+            )}
+            </div>
             <DragDropProvider
                 onDragEnd={(event) => {
                   if (event.canceled) return;
@@ -563,6 +764,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
               <Button type="button" onClick={onTestQuestionAdd}>Добавить вопрос <PlusIcon className="size-4" /></Button>
             </div>
             </DragDropProvider>
+            </>
           )}
         </div>
       </form>

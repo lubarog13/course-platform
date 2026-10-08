@@ -13,7 +13,7 @@ import {
   toTestQuestionOptionDto,
   toTestQuestionDto,
 } from "./testForm";
-import { TestQuestionDto } from "@/app/lib/lessons";
+import type { TestQuestionDto } from "@/app/lib/lessons";
 import { TestQuestionOption } from "@/app/lib/models";
 import { Item, ItemActions, ItemContent, ItemTitle } from "../ui/item";
 import { useEffect, useState } from "react";
@@ -363,9 +363,12 @@ export default function TestQuestionEdit({
             </div>
           )}
           {type === "text" && (
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col gap-2 mt-2">
+              <Label>Текстовый ответ</Label>
               <Input {...register("textAnswer")} />
-              <Label>Ответ</Label>
+              <div className="text-sm text-muted-foreground">
+                <p>Если ответ не записан, рекомендуется установить ручную проверку</p>
+              </div>
             </div>
           )}
           <div className="flex items-center gap-2">
