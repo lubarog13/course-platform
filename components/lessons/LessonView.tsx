@@ -7,14 +7,12 @@ import { Button } from "../ui/button";
 import { ArrowLeftIcon, ArrowRightIcon, EditIcon, FileIcon } from "lucide-react";
 import MarkdownContent from "../base/MarkdownContent";
 import TestView from "./TestView";
+import AttemptsList from "./AttemtsList";
 import VideoView from "./VideoView";
 import NotFound from "../layout/not-found";
 import Loading from "../layout/loading";
 import { useRouter } from "next/navigation";
 import type { UserLesson } from "@prisma/client";
-import { isCourseStaff } from "@/app/lib/enrollment";
-import { useSession } from "next-auth/react";
-
 
 type LessonViewProps = {
   canEdit: boolean;
@@ -54,7 +52,6 @@ export default function LessonView({
   const [lesson, setLesson] = useState<LessonFullDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [courseStaff, setCourseStaff] = useState(false);
   const router = useRouter();
 
   const progressIdRef = useRef<number | null>(null);
@@ -64,14 +61,6 @@ export default function LessonView({
   const flushedRef = useRef(false);
   const lessonTypeRef = useRef<string | null>(null);
   const videoProgressRef = useRef(0);
-  const {data: session, status} = useSession();
-  useEffect(() => {
-    if (status === "authenticated") {
-      isCourseStaff(lessonId, Number(session?.user.id ?? 0), session?.user.role ?? "student").then((isStaff) => {
-        setCourseStaff(isStaff);
-      });
-    }
-  }, [status, lessonId]);
 
   const updateLessonProgress = useCallback(
     async ({
@@ -332,13 +321,16 @@ export default function LessonView({
         {lesson.type === "text" && (
           <MarkdownContent nodes={lesson.textContent || ""} />
         )}
-        {lesson.type === "test" && !courseStaff && (
-          <TestView
-            lesson={lesson}
-            deadline={partDeadline}
-            onAttemptSubmitted={handleTestSubmitted}
-          />
-        )}
+        {lesson.type === "test" &&
+          (canEdit ? (
+            <AttemptsList lesson={lesson} />
+          ) : (
+            <TestView
+              lesson={lesson}
+              deadline={partDeadline}
+              onAttemptSubmitted={handleTestSubmitted}
+            />
+          ))}
         {lesson.type === "video" && (
           <VideoView
             lesson={lesson}

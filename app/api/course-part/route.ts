@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
         name: data.name,
         description: data.description,
         sortOrder: data.sortOrder,
+        deadlineDays: data.deadlineDays,
       },
     });
 

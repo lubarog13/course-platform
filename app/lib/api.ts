@@ -17,7 +17,7 @@ export function prismaErrorResponse(error: unknown, entity = "Запись") {
       return jsonError(`${entity} не найдена`, 404);
     }
   }
-  if (error instanceof Error && (error.message.startsWith("Поле") || error.message.startsWith("Ожидается") || error.message.startsWith("testQuestions") || error.message.startsWith("У вопросов") || error.message.startsWith("Для"))) {
+  if (error instanceof Error && (error.cause === "invalid")) {
     return jsonError(error.message, 400);
   }
   console.error(error);
@@ -31,7 +31,7 @@ export function asOptionalString(
   if (value === undefined) return undefined;
   if (value === null) return null;
   if (typeof value !== "string") {
-    throw new Error(`Поле ${field} должно быть строкой`);
+    throw new Error(`Поле ${field} должно быть строкой`, {cause: "invalid"});
   }
   const trimmed = value.trim();
   return trimmed.length === 0 ? null : trimmed;
@@ -40,7 +40,7 @@ export function asOptionalString(
 export function asRequiredString(value: unknown, field: string): string {
   const result = asOptionalString(value, field);
   if (!result) {
-    throw new Error(`Поле ${field} обязательно`);
+    throw new Error(`Поле ${field} обязательно`, {cause: "invalid"});
   }
   return result;
 }
@@ -48,7 +48,7 @@ export function asRequiredString(value: unknown, field: string): string {
 export function asBoolean(value: unknown, field: string): boolean | undefined {
   if (value === undefined) return undefined;
   if (typeof value !== "boolean") {
-    throw new Error(`Поле ${field} должно быть boolean`);
+    throw new Error(`Поле ${field} должно быть boolean`, {cause: "invalid"});
   }
   return value;
 }
@@ -60,7 +60,7 @@ export function asOptionalId(
   if (value === undefined) return undefined;
   if (value === null) return null;
   if (typeof value !== "number" || !Number.isInteger(value) || value <= 0) {
-    throw new Error(`Поле ${field} должно быть положительным целым числом`);
+    throw new Error(`Поле ${field} должно быть положительным целым числом`, {cause: "invalid"});
   }
   return value;
 }
@@ -68,7 +68,7 @@ export function asOptionalId(
 export function asRequiredId(value: unknown, field: string): number {
   const result = asOptionalId(value, field);
   if (result === undefined || result === null) {
-    throw new Error(`Поле ${field} обязательно`);
+    throw new Error(`Поле ${field} обязательно`, {cause: "invalid"});
   }
   return result;
 }
@@ -81,7 +81,7 @@ export function asOptionalInt(
   if (value === undefined) return undefined;
   if (value === null) return null;
   if (typeof value !== "number" || !Number.isInteger(value) || value < min) {
-    throw new Error(`Поле ${field} должно быть целым числом ≥ ${min}`);
+    throw new Error(`Поле ${field} должно быть целым числом ≥ ${min}`, {cause: "invalid"});
   }
   return value;
 }
@@ -89,21 +89,21 @@ export function asOptionalInt(
 export function asRequiredInt(value: unknown, field: string, min = 0): number {
   const result = asOptionalInt(value, field, min);
   if (result === undefined || result === null) {
-    throw new Error(`Поле ${field} обязательно`);
+    throw new Error(`Поле ${field} обязательно`, {cause: "invalid"});
   }
   return result;
 }
 
 export function parseNumericId(id: string): number {
   if (!/^\d+$/.test(id)) {
-    throw new Error("Некорректный id");
+    throw new Error("Некорректный id", {cause: "invalid"});
   }
   return Number(id);
 }
 
 export function requireObject(body: unknown): Record<string, unknown> {
   if (body === null || typeof body !== "object" || Array.isArray(body)) {
-    throw new Error("Ожидается JSON-объект");
+    throw new Error("Ожидается JSON-объект", {cause: "invalid"});
   }
   return body as Record<string, unknown>;
 }

@@ -14,7 +14,17 @@ import { CourseLevelValues } from "@/lib/models"
 import { useRouter } from "next/navigation"
 import { Star, StarOff, StarHalf, Clock, Unlock, Lock } from 'lucide-react';
 export function CourseCard({ course, updateFilters }: { course: CourseDto, updateFilters: (filters: {tag?: string} & CourseListQuery) => void }) {
-    const imageFile = course.coverFile?.url || '/images/course-placeholder.jpeg'
+  let imageFile;
+  if (course.coverFile?.url) {
+    const filename =
+      typeof course.coverFile?.url === "string"
+        ? course.coverFile?.url.split(/[/\\]/).pop()
+        : undefined;
+    if (!filename) return;
+    imageFile = `/api/uploads/${encodeURIComponent(filename)}`;
+  } else {
+    imageFile = '/images/course-placeholder.jpeg';
+  }
     const levelLabel = course.level ? CourseLevelValues[course.level] : 'Без уровня'
     const duration = course.durationSeconds ? formatDuration(course.durationSeconds) : 'не указано'
     function formatDuration(duration: number) {
@@ -32,6 +42,7 @@ export function CourseCard({ course, updateFilters }: { course: CourseDto, updat
       />
       <CardHeader className="flex flex-col gap-3">
         <CardAction className="flex items-center flex-wrap gap-1">
+          {course.publishedAt === null ? <Badge variant="outline" className="text-xs text-muted-foreground">Черновик</Badge> : ''}
           {course.category?.slug && (
             <Badge variant="outline" onClick={() => updateFilters({ category: course.category?.slug })}>{course.category?.name}</Badge>
           )}

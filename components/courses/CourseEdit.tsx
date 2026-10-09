@@ -1,22 +1,25 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MDXEditorMethods } from "@mdxeditor/editor";
 import { FormProvider, useForm, useWatch, type Resolver, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { type CourseFormValues, courseFormSchema, toCourseFormValues } from "./courseForm";
-import { loadCourseEditDraft, saveCourseEditDraft } from "./courseEditDraft";
+import {
+  clearCourseEditDraft,
+  loadCourseEditDraft,
+  saveCourseEditDraft,
+} from "./courseEditDraft";
 
 import type { CourseFullDto } from "@/app/lib/courses";
 import type { CoursePartEditData } from "@/app/lib/courseParts";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ForwardRefEditor } from "../base/ForwardRefEditor";
-import { FileIcon, XIcon } from "lucide-react";
+import { PlusIcon, XIcon } from "lucide-react";
 import FileUploader from "@/components/base/FileUploader";
 import type { File as FileModel } from "@/app/lib/models";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -24,6 +27,10 @@ import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/c
 import { CourseLevel } from "@/app/lib/models";
 import { InputMultiSelect, InputMultiSelectTrigger } from "@/components/ui/input-multiselect";
 import { InputSelect, InputSelectTrigger } from "@/components/ui/input-select";
+import { DragDropProvider } from "@dnd-kit/react";
+import { isSortable } from "@dnd-kit/react/sortable";
+import { useHotkeys } from "react-hotkeys-hook";
+import CoursePartEdit from "./CoursePartEdit";
 type CourseEditProps = {
   course: CourseFullDto;
   isNew: boolean;
@@ -34,9 +41,9 @@ type TagOption = {
   tag: string;
   count: number;
 };
-let filtersRequest: Promise<{ tags: TagOption[], categories: { name: string, slug: string }[] }> | null = null;
+let filtersRequest: Promise<{ tags: TagOption[], categories: { name: string, id: number, slug: string }[] }> | null = null;
 
-function loadFilterTags(signal: AbortSignal): Promise<{ tags: TagOption[], categories: { name: string, slug: string }[] }> {
+function loadFilterTags(signal: AbortSignal): Promise<{ tags: TagOption[], categories: { name: string, id: number, slug: string }[] }> {
   if (!filtersRequest) {
     filtersRequest = fetch("/api/filters")
       .then((res) => {
@@ -45,7 +52,13 @@ function loadFilterTags(signal: AbortSignal): Promise<{ tags: TagOption[], categ
       })
       .then((data) =>{
         const tags = [...data.tags].sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag));
-        const categories = [...data.categories].sort((a, b) => a.name.localeCompare(b.name));
+        const categories = [...data.categories]
+          .map((category) => ({
+            id: category.id,
+            name: category.name,
+            slug: category.slug,
+          }))
+          .sort((a, b) => a.name.localeCompare(b.name));
         return { tags, categories };
       })
       .catch((error) => {
@@ -88,6 +101,7 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
     const [tags, setTags] = useState<TagOption[]>([]);
     const [categories, setCategories] = useState<{ name: string, id: number, slug: string }[]>([]);
     const [loading, setLoading] = useState(true);
+    const [coverUrl, setCoverUrl] = useState<string | null>(null);
 
     const form = useForm<CourseFormValues>({
         resolver: zodResolver(courseFormSchema) as Resolver<CourseFormValues>,
@@ -106,10 +120,16 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
         watch,
         formState: { errors, isDirty },
     } = form;
-    const openedCourseId = useRef<number>(course.id);
+    const openedCourseId = useRef<number | null>(null);
     const cover = useWatch({ control, name: "cover" });
+    const needEnrollment = useWatch({ control, name: "needEnrollment" });
+    const level = useWatch({ control, name: "level" });
+    const categoryId = useWatch({ control, name: "categoryId" });
+    const tagsValue = useWatch({ control, name: "tags" });
+    const language = useWatch({ control, name: "language" });
+    const description = useWatch({ control, name: "description" });
 
-    const draftCourseIdRef = useRef<number>(course.id);
+    const draftCourseIdRef = useRef<number>(course.id < 1 ? -1 : course.id);
     const draftTimerRef = useRef<number | null>(null);
     useEffect(() => {
       const controller = new AbortController();
@@ -129,45 +149,70 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
   
       return () => controller.abort();
     }, []);
-    useEffect(() => {
+    // useLayoutEffect — чтобы черновик применился до отрисовки (важно для id=-1 / type=course)
+    useLayoutEffect(() => {
         if (openedCourseId.current === course.id) return;
         openedCourseId.current = course.id;
-        draftCourseIdRef.current = course.id;
-    
-        const draft = loadCourseEditDraft(userId, course.id);
+        draftCourseIdRef.current = course.id < 1 ? -1 : course.id;
+
+        const draftId = course.id < 1 ? -1 : course.id;
+        const draft = loadCourseEditDraft(userId, draftId);
         if (draft) {
           reset(draft.values);
-          editorRef.current?.setMarkdown(draft.values.description ?? "");
+          const markdown = draft.values.description ?? "";
+          // Редактор грузится динамически — повторяем setMarkdown, когда ref появится
+          editorRef.current?.setMarkdown(markdown);
+          const retry = window.setTimeout(() => {
+            editorRef.current?.setMarkdown(markdown);
+          }, 0);
           setPublishedAt(
-            draft.publishedAt ? new Date(draft.publishedAt) : draft.values.publishedAt,
+            draft.publishedAt
+              ? new Date(draft.publishedAt)
+              : draft.values.publishedAt,
           );
           setCourseParts(draft.courseParts ?? []);
           setCoursePartsChanged(true);
           setDraftRestoredAt(new Date(draft.updatedAt));
           setSavedAt(null);
           setError(null);
-          return;
+          return () => window.clearTimeout(retry);
         }
-    
+
         const values = toCourseFormValues(course);
         reset(values);
         editorRef.current?.setMarkdown(values.description ?? "");
         setPublishedAt(values.publishedAt);
-        setCourseParts(course.courseParts);
+        setCourseParts(course.courseParts ?? []);
         setCoursePartsChanged(false);
         setDraftRestoredAt(null);
         setSavedAt(null);
         setError(null);
       }, [course, reset, userId]);
-    
+    useEffect(() => {
+        if (!cover) return;
+        const filename =
+      typeof cover?.url === "string"
+        ? cover.url.split(/[/\\]/).pop()
+        : undefined;
+    if (!filename) return;
+    setCoverUrl(`/api/uploads/${encodeURIComponent(filename)}`);
+      }, [cover?.url]);
     useEffect(() => {
         if (!isDirty && !coursePartsChanged && !draftRestoredAt) return;
     
         const persist = () => {
-          saveCourseEditDraft(userId, draftCourseIdRef.current, {
+          const draftId =
+            openedCourseId.current != null && openedCourseId.current > 0
+              ? openedCourseId.current
+              : -1;
+          draftCourseIdRef.current = draftId;
+          saveCourseEditDraft(userId, draftId, {
             values: {
               ...getValues(),
-              description: editorRef.current?.getMarkdown() ?? getValues("description"),
+              description:
+                editorRef.current?.getMarkdown() ??
+                getValues("description") ??
+                "",
             },
             courseParts,
             publishedAt,
@@ -207,23 +252,159 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
         return markdown;
       };
 
+    const ensureCategoryId = async (
+      categoryId: number | null | undefined,
+    ): Promise<number | null> => {
+      if (categoryId == null) return null;
+      if (categoryId > 0) return categoryId;
+
+      const category = categories.find((item) => item.id === categoryId);
+      if (!category?.name) {
+        throw new Error("Выберите категорию курса");
+      }
+
+      const response = await fetch("/api/category", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: category.name,
+          slug: category.slug,
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error(body?.error ?? "Не удалось создать категорию");
+      }
+
+      const saved = body as { id: number; name: string; slug: string };
+      setCategories((current) =>
+        current.map((item) =>
+          item.id === categoryId
+            ? { id: saved.id, name: saved.name, slug: saved.slug }
+            : item,
+        ),
+      );
+      return saved.id;
+    };
+
     const onSubmit: SubmitHandler<CourseFormValues> = async (values) => {
       setSaving(true);
       setError(null);
       try {
         const markdown = syncMarkdown(false);
+        const resolvedCategoryId = await ensureCategoryId(values.categoryId);
+        const currentId = openedCourseId.current ?? course.id;
+        const creating = currentId < 1;
+
+        const namedParts = courseParts.filter((part) => part.name?.trim());
+        for (const [index, part] of namedParts.entries()) {
+          if (!part.name?.trim()) {
+            throw new Error(`Укажите название для части курса №${index + 1}`);
+          }
+        }
+
+        const response = await fetch(
+          creating ? "/api/course" : `/api/course/${currentId}`,
+          {
+            method: creating ? "POST" : "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: values.name.trim(),
+              description: markdown?.trim() || null,
+              language: values.language ?? "ru",
+              level: values.level ?? null,
+              needEnrollment: values.needEnrollment ?? false,
+              coverFileId: values.cover?.id ?? null,
+              categoryId: resolvedCategoryId,
+              tags: values.tags ?? [],
+              deadlineDays: values.deadlineDays,
+              publishedAt,
+              parts: namedParts.map((part, index) => ({
+                ...(part.id != null && part.id > 0 ? { id: part.id } : {}),
+                name: part.name!.trim(),
+                description: part.description?.trim() || null,
+                sortOrder: part.sortOrder ?? index + 1,
+                deadlineDays: part.deadlineDays ?? null,
+              })),
+            }),
+          },
+        );
+
+        const body = await response.json().catch(() => null);
+        if (!response.ok) {
+          throw new Error(body?.error ?? "Не удалось сохранить курс");
+        }
+
+        const saved = body as CourseFullDto;
+        clearCourseEditDraft(userId, -1);
+        clearCourseEditDraft(userId, draftCourseIdRef.current);
+        openedCourseId.current = saved.id;
+        draftCourseIdRef.current = saved.id;
+        clearCourseEditDraft(userId, saved.id);
+
+        const formValues = toCourseFormValues(saved);
+        reset(formValues);
+        editorRef.current?.setMarkdown(formValues.description ?? "");
+        setPublishedAt(formValues.publishedAt);
+        setCourseParts(saved.courseParts ?? []);
+        setCoursePartsChanged(false);
+        setDraftRestoredAt(null);
+        setSavedAt(new Date());
+        onSaved(saved);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Ошибка сохранения");
       } finally {
         setSaving(false);
       }
     };
+
     const publishCourse = async () => {
       const nextPublishedAt = new Date();
       setPublishedAt(nextPublishedAt);
       setValue("publishedAt", nextPublishedAt, { shouldDirty: true });
       await form.handleSubmit(onSubmit)();
     };
+
+    useHotkeys("ctrl+s", (event) => {
+      event.preventDefault();
+      syncMarkdown(false);
+      void form.handleSubmit(onSubmit)();
+    });
+
+    const reorderCourseParts = (parts: CoursePartEditData[], from: number, to: number) => {
+      if (from === to || from < 0 || to < 0) return parts;
+      const next = [...parts];
+      const [moved] = next.splice(from, 1);
+      next.splice(to, 0, moved);
+      return next.map((part, index) => ({ ...part, sortOrder: index + 1 }));
+    };
+
+    const onCoursePartSaved = (part: CoursePartEditData) => {
+      setCourseParts((current) =>
+        current.map((item) => (item.id === part.id ? part : item)),
+      );
+      setCoursePartsChanged(true);
+    };
+  
+    const onCoursePartDeleted = (part: CoursePartEditData) => {
+      setCourseParts((current) => current.filter((item) => item.id !== part.id));
+      setCoursePartsChanged(true);
+    };
+
+    const onCoursePartAdd = () => {
+      const newPart = {
+        id: -Date.now(),
+        name: "",
+        description: "",
+        sortOrder: courseParts.length + 1,
+        deadlineDays: null,
+        publishedAt: null,
+      } as CoursePartEditData;
+      setCourseParts([...courseParts, newPart]);
+      setCoursePartsChanged(true);
+    };
+  
+  
   
   return (
     <FormProvider {...form}>
@@ -286,7 +467,7 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
   <div className="grid gap-4">
     <Field>
       <FieldLabel
-      htmlFor="name">Название курса</FieldLabel>
+      htmlFor="name">Название курса <span className="text-destructive text-sm">*</span></FieldLabel>
       <Input
       id="name"
       {...register("name")}
@@ -299,12 +480,12 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
               className="w-full grid-cols-[100%] overflow-hidden"
               data-invalid={!!errors.description || undefined}
             >
-              <FieldLabel>Описание курса</FieldLabel>
+              <FieldLabel>Описание курса <span className="text-destructive text-sm">*</span></FieldLabel>
               <ForwardRefEditor
                 key={course.id < 1 ? "new" : course.id}
                 className="w-full"
                 ref={editorRef}
-                markdown={getValues("description") as string}
+                markdown={description ?? ""}
                 onChange={(value) => {
                   const prev = getValues("description");
                   if (value === prev) return;
@@ -321,13 +502,13 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
     <Field data-invalid={!!errors.cover || undefined}>
               <FieldLabel>Обложка курса (необязательно)</FieldLabel>
               {cover ? (
-                <div className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-                  <img src={cover.url} alt={cover.originalName} className="size-16 object-cover" />
+                <div className="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm relative">
+                  <img src={coverUrl ?? ""} alt={cover?.originalName ?? "Обложка курса"} className="size-16 object-cover w-full h-auto aspect-video object-center object-cover" />
                   <Button
                     type="button"
                     variant="ghost"
                     size="icon"
-                    className="size-8 shrink-0"
+                    className="size-8 absolute top-0 right-0"
                     onClick={() =>
                       setValue("cover", null, {
                         shouldDirty: true,
@@ -367,7 +548,7 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
         <Checkbox
         id="needEnrollment"
         aria-invalid={!!errors.needEnrollment}
-        checked={getValues("needEnrollment")}
+        checked={needEnrollment === true}
         onCheckedChange={(checked) => {
           setValue("needEnrollment", checked === true, {
             shouldDirty: true,
@@ -378,11 +559,11 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
         <Label htmlFor="needEnrollment">Требуется регистрация</Label>
       </div>
       <Field data-invalid={!!errors.level || undefined}>
-        <FieldLabel htmlFor="level">Уровень курса</FieldLabel>
+        <FieldLabel htmlFor="level">Уровень курса <span className="text-destructive text-sm">*</span></FieldLabel>
         <Select
         id="level"
         items={[{ value: "beginner", label: "Начальный" }, { value: "intermediate", label: "Средний" }, { value: "advanced", label: "Продвинутый" }]}
-        value={getValues("level")}
+        value={level}
         onValueChange={(value) => {
           setValue("level", value as CourseLevel, {
             shouldDirty: true,
@@ -402,9 +583,9 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
         <FieldError errors={[errors.level]} />
       </Field>
       <Field data-invalid={!!errors.categoryId || undefined}>
-        <FieldLabel htmlFor="category">Категория курса</FieldLabel>
+        <FieldLabel htmlFor="category">Категория курса <span className="text-destructive text-sm">*</span></FieldLabel>
         <InputSelect
-        value={getValues("categoryId")?.toString() ?? ""}
+        value={categoryId != null ? categoryId.toString() : ""}
         options={categories.map((category) => ({
           value: category.id.toString(),
           label: category.name,
@@ -412,9 +593,13 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
         creatable
         onCreateOption={(input) => {
           const newCategory = {
-            id: categories.length + 1,
-            name: input,
-            slug: input.toLowerCase().replace(/ /g, "-"),
+            id: -Date.now(),
+            name: input.trim(),
+            slug: input
+              .trim()
+              .toLowerCase()
+              .replace(/[^a-z0-9а-яё]+/gi, "-")
+              .replace(/^-+|-+$/g, ""),
           };
           setCategories([...categories, newCategory]);
           return {
@@ -437,7 +622,7 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
         <FieldLabel htmlFor="tags">Теги курса</FieldLabel>
         <InputMultiSelect
         creatable
-        value={getValues("tags") ?? []}
+        value={tagsValue ?? []}
         options={tags.map((tag) => ({
           value: tag.tag,
           label: tag.tag,
@@ -473,9 +658,9 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
       <FieldError errors={[errors.deadlineDays]} />
       </Field>
       <Field data-invalid={!!errors.language || undefined}>
-        <FieldLabel htmlFor="language">Язык курса</FieldLabel>
+        <FieldLabel htmlFor="language">Язык курса <span className="text-destructive text-sm">*</span></FieldLabel>
         <InputSelect
-        value={getValues("language")}
+        value={language ?? "ru"}
         options={[
           { value: "ru", label: "Русский" },
           { value: "en", label: "Английский" },
@@ -506,8 +691,31 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
         <FieldError errors={[errors.language]} />
       </Field>
  </div>
-        
-      </form>
+ <DragDropProvider
+                onDragEnd={(event) => {
+                  if (event.canceled) return;
+                  const { source } = event.operation;
+                  if (!isSortable(source)) return;
+                  setCourseParts((current) =>
+                    reorderCourseParts(current, source.initialIndex, source.index),
+                  );
+                  setCoursePartsChanged(true);
+                }}
+              >
+            <div className="flex flex-col gap-4">
+              {courseParts.map((part, index) => (
+                <CoursePartEdit
+                  key={part.id}
+                  index={index}
+                  part={part}
+                  onSaved={onCoursePartSaved}
+                  onDeleted={onCoursePartDeleted}
+                />
+              ))}
+              <Button type="button" onClick={onCoursePartAdd} className="min-h-11">Добавить часть курса <PlusIcon className="size-4" /></Button>
+            </div>
+            </DragDropProvider>
+    </form>
     </FormProvider>
   );
 }

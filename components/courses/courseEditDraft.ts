@@ -55,18 +55,27 @@ export function saveCourseEditDraft(
   courseId: number,
   payload: {
     values: CourseFormValues;
-    courseParts:  CoursePartEditData[];
+    courseParts: CoursePartEditData[];
     publishedAt: Date | null;
   },
 ) {
   if (typeof window === "undefined") return;
   try {
+    const publishedAtIso = payload.publishedAt?.toISOString() ?? null;
     const draft: CourseEditDraft = {
       version: DRAFT_VERSION,
       updatedAt: new Date().toISOString(),
-      values: payload.values,
+      values: {
+        ...payload.values,
+        publishedAt: payload.values.publishedAt
+          ? payload.values.publishedAt instanceof Date
+            ? payload.values.publishedAt
+            : new Date(payload.values.publishedAt)
+          : null,
+        description: payload.values.description ?? "",
+      },
       courseParts: payload.courseParts,
-      publishedAt: payload.publishedAt?.toISOString() ?? null,
+      publishedAt: publishedAtIso,
     };
     window.localStorage.setItem(
       courseEditDraftKey(userId, courseId),

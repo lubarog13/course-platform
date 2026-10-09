@@ -60,12 +60,21 @@ export function saveLessonEditDraft(
 ) {
   if (typeof window === "undefined") return;
   try {
+    const publishedAtIso = payload.publishedAt?.toISOString() ?? null;
     const draft: LessonEditDraft = {
       version: DRAFT_VERSION,
       updatedAt: new Date().toISOString(),
-      values: payload.values,
+      values: {
+        ...payload.values,
+        publishedAt: payload.values.publishedAt
+          ? payload.values.publishedAt instanceof Date
+            ? payload.values.publishedAt
+            : new Date(payload.values.publishedAt)
+          : null,
+        textContent: payload.values.textContent ?? "",
+      },
       testQuestions: payload.testQuestions,
-      publishedAt: payload.publishedAt?.toISOString() ?? null,
+      publishedAt: publishedAtIso,
     };
     window.localStorage.setItem(
       lessonEditDraftKey(userId, lessonId),

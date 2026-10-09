@@ -65,6 +65,7 @@ export default function InitializedMDXEditor({
   className,
   contentEditableClassName,
   translation = mdxEditorRu,
+  markdown,
   ...props
 }: { editorRef: ForwardedRef<MDXEditorMethods> | null } & MDXEditorProps) {
   return (
@@ -84,6 +85,7 @@ export default function InitializedMDXEditor({
         .filter(Boolean)
         .join(" ")}
       {...props}
+      markdown={markdown ?? ""}
       ref={editorRef}
     />
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { MDXEditorMethods } from "@mdxeditor/editor";
 import { FormProvider, useForm, useWatch, type Resolver, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -87,24 +87,34 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
   const type = useWatch({ control, name: "type" });
   const attachment = useWatch({ control, name: "attachment" });
   const coursePartId = useWatch({ control, name: "coursePartId" });
+  const textContent = useWatch({ control, name: "textContent" });
+  const reviewEnabled = useWatch({ control, name: "reviewEnabled" });
+  const manualGrading = useWatch({ control, name: "manualGrading" });
+  const maxAttempts = useWatch({ control, name: "maxAttempts" });
   const openedLessonId = useRef<number | null>(null);
   const [courseParts, setCourseParts] = useState<CoursePartExtendedDto[]>([]);
   const [loading, setLoading] = useState(true);
   const [testQuestions, setTestQuestions] = useState<TestQuestionDto[]>(lesson.testQuestions || []);
 
   const [questionsChanged, setQuestionsChanged] = useState(false);
-  const draftLessonIdRef = useRef<number>(lesson.id);
+  const draftLessonIdRef = useRef<number>(lesson.id < 1 ? -1 : lesson.id);
   const draftTimerRef = useRef<number | null>(null);
 
-  useEffect(() => {
+  // useLayoutEffect — черновик до отрисовки (важно для id=-1 / type=lesson)
+  useLayoutEffect(() => {
     if (openedLessonId.current === lesson.id) return;
     openedLessonId.current = lesson.id;
-    draftLessonIdRef.current = lesson.id;
+    draftLessonIdRef.current = lesson.id < 1 ? -1 : lesson.id;
 
-    const draft = loadLessonEditDraft(userId, lesson.id);
+    const draftId = lesson.id < 1 ? -1 : lesson.id;
+    const draft = loadLessonEditDraft(userId, draftId);
     if (draft) {
       reset(draft.values);
-      editorRef.current?.setMarkdown(draft.values.textContent);
+      const markdown = draft.values.textContent ?? "";
+      editorRef.current?.setMarkdown(markdown);
+      const retry = window.setTimeout(() => {
+        editorRef.current?.setMarkdown(markdown);
+      }, 0);
       setPublishedAt(
         draft.publishedAt ? new Date(draft.publishedAt) : draft.values.publishedAt,
       );
@@ -113,14 +123,14 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
       setDraftRestoredAt(new Date(draft.updatedAt));
       setSavedAt(null);
       setError(null);
-      return;
+      return () => window.clearTimeout(retry);
     }
 
     const values = toLessonFormValues(lesson);
     reset(values);
-    editorRef.current?.setMarkdown(values.textContent);
+    editorRef.current?.setMarkdown(values.textContent ?? "");
     setPublishedAt(values.publishedAt);
-    setTestQuestions(lesson.testQuestions);
+    setTestQuestions(lesson.testQuestions ?? []);
     setQuestionsChanged(false);
     setDraftRestoredAt(null);
     setSavedAt(null);
@@ -132,10 +142,18 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
     if (!isDirty && !questionsChanged && !draftRestoredAt) return;
 
     const persist = () => {
-      saveLessonEditDraft(userId, draftLessonIdRef.current, {
+      const draftId =
+        openedLessonId.current != null && openedLessonId.current > 0
+          ? openedLessonId.current
+          : -1;
+      draftLessonIdRef.current = draftId;
+      saveLessonEditDraft(userId, draftId, {
         values: {
           ...getValues(),
-          textContent: editorRef.current?.getMarkdown() ?? getValues("textContent"),
+          textContent:
+            editorRef.current?.getMarkdown() ??
+            getValues("textContent") ??
+            "",
         },
         testQuestions,
         publishedAt,
@@ -288,9 +306,10 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
         videoId = savedVideo?.id ?? videoId;
       }
 
-      const creating = isNew && (openedLessonId.current ?? lesson.id) < 1;
+      const currentId = openedLessonId.current ?? lesson.id;
+      const creating = currentId < 1;
       const response = await fetch(
-        creating ? "/api/lesson" : `/api/lesson/${openedLessonId.current ?? lesson.id}`,
+        creating ? "/api/lesson" : `/api/lesson/${currentId}`,
         {
           method: creating ? "POST" : "PATCH",
           headers: { "Content-Type": "application/json" },
@@ -336,7 +355,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
 
       const saved = body as LessonFullDto;
       const formValues = toLessonFormValues(saved);
-      // Prevent the lesson-prop effect from treating create→id as a fresh open.
+      clearLessonEditDraft(userId, -1);
       clearLessonEditDraft(userId, draftLessonIdRef.current);
       openedLessonId.current = saved.id;
       draftLessonIdRef.current = saved.id;
@@ -540,7 +559,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
                 key={lesson.id < 1 ? "new" : lesson.id}
                 className="w-full"
                 ref={editorRef}
-                markdown={getValues("textContent")}
+                markdown={textContent ?? ""}
                 onChange={(value) => {
                   const prev = getValues("textContent");
                   if (value === prev) return;
@@ -681,7 +700,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
               <Checkbox
                 id="lesson-review-enabled"
                 aria-invalid={!!errors.reviewEnabled}
-                checked={getValues("reviewEnabled")}
+                checked={reviewEnabled === true}
                 onCheckedChange={(checked) => {
                   setValue("reviewEnabled", checked === true, {
                     shouldDirty: true,
@@ -696,7 +715,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
               <Checkbox
                 id="lesson-manual-grading"
                 aria-invalid={!!errors.manualGrading}
-                checked={getValues("manualGrading")}
+                checked={manualGrading === true}
                 onCheckedChange={(checked) => {
                   setValue("manualGrading", checked === true, {
                     shouldDirty: true,
@@ -711,7 +730,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
               <Checkbox
                 id="lesson-max-attempts"
                 aria-invalid={!!errors.maxAttempts}
-                checked={!getValues("maxAttempts")}
+                checked={maxAttempts == null}
                 onCheckedChange={(checked) => {
                   setValue("maxAttempts", checked === true ? null : 1, {
                     shouldDirty: true,
@@ -721,7 +740,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
               />
               <Label htmlFor="lesson-max-attempts">Количество попыток не ограничено</Label>
             </div> 
-            {getValues("maxAttempts") !== null && (
+            {maxAttempts != null && (
             <Field data-invalid={!!errors.maxAttempts || undefined}>
               <FieldLabel htmlFor="lesson-max-attempts">Максимальное количество попыток</FieldLabel>
               <Input

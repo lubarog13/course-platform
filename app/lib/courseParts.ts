@@ -84,6 +84,7 @@ export type CoursePartWriteData = {
   name?: string;
   description?: string | null;
   sortOrder?: number;
+  deadlineDays?: number | null;
 };
 
 export type CoursePartEditData = {
@@ -92,6 +93,7 @@ export type CoursePartEditData = {
   description?: string | null;
   sortOrder?: number;
   deadlineDays?: number | null;
+  publishedAt?: Date | null;
 };
 
 export function parseCoursePartBody(
@@ -112,12 +114,14 @@ export function parseCoursePartBody(
     mode === "create"
       ? asRequiredId(raw.courseId, "courseId")
       : asOptionalIdNullable(raw.courseId, "courseId");
+  const deadlineDays = asOptionalInt(raw.deadlineDays, "deadlineDays", 0);
 
   return {
     ...(courseId !== undefined && courseId !== null ? { courseId } : {}),
     ...(name !== undefined && name !== null ? { name } : {}),
     ...(description !== undefined ? { description } : {}),
     ...(sortOrder !== undefined && sortOrder !== null ? { sortOrder } : {}),
+    ...(deadlineDays !== undefined ? { deadlineDays } : {}),
   };
 }
 

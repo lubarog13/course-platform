@@ -790,14 +790,82 @@ export async function findTestAttempt(id: number, resultData: TestAttemptReturnD
   };
 }
 
-export async function findStudentsWithAttemptsByLessonId(lessonId: number, limit: number = 10, offset: number = 0) {
-  return prisma.testAttempt.groupBy({
-    by: ["userId", "submittedAt"],
-    where: { lessonId },
-    orderBy: { submittedAt: "desc" },
-    take: limit,
-    skip: offset,
+export type StudentAttemptListItem = {
+  userId: number;
+  user: {
+    id: number;
+    name: string;
+    surname: string;
+    patronymic: string | null;
+    email: string;
+  };
+  attemptId: number;
+  attemptNumber: number;
+  submittedAt: Date;
+  score: number | null;
+  maxScore: number | null;
+  passed: boolean | null;
+  pendingReview: boolean;
+  attemptsCount: number;
+};
+
+/** Последняя завершённая попытка каждого студента по тесту (для проверки). */
+export async function findStudentsWithAttemptsByLessonId(
+  lessonId: number,
+  limit: number = 20,
+  offset: number = 0,
+): Promise<{ items: StudentAttemptListItem[]; total: number; limit: number; offset: number }> {
+  const where = {
+    lessonId,
+    submittedAt: { not: null },
+  } as const;
+
+  const attempts = await prisma.testAttempt.findMany({
+    where,
+    include: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          surname: true,
+          patronymic: true,
+          email: true,
+        },
+      },
+    },
+    orderBy: [{ submittedAt: "desc" }, { attemptNumber: "desc" }],
   });
+
+  const counts = new Map<number, number>();
+  const latestByUser = new Map<number, (typeof attempts)[number]>();
+  for (const attempt of attempts) {
+    counts.set(attempt.userId, (counts.get(attempt.userId) ?? 0) + 1);
+    if (!latestByUser.has(attempt.userId)) {
+      latestByUser.set(attempt.userId, attempt);
+    }
+  }
+
+  const all = [...latestByUser.values()];
+  const total = all.length;
+  const page = all.slice(offset, offset + limit);
+
+  return {
+    items: page.map((attempt) => ({
+      userId: attempt.userId,
+      user: attempt.user,
+      attemptId: attempt.id,
+      attemptNumber: attempt.attemptNumber,
+      submittedAt: attempt.submittedAt!,
+      score: attempt.score,
+      maxScore: attempt.maxScore,
+      passed: attempt.passed,
+      pendingReview: attempt.passed === null,
+      attemptsCount: counts.get(attempt.userId) ?? 1,
+    })),
+    total,
+    limit,
+    offset,
+  };
 }
 
 export async function findTestAttemptsByLessonId(lessonId: number, userId: number) {
