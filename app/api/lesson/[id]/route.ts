@@ -21,10 +21,19 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       if (!session?.user?.id) {
         return jsonError("Не авторизован", 401);
       }
+    const isStaffRole = session.user.role !== "student";
+    // isCorrect в опциях — только преподавателям/админам (для проверки и редактора)
     const includeCorrect =
-      request.nextUrl.searchParams.get("includeCorrect") === "1";
-    const testIsTeacher = request.nextUrl.searchParams.get("testIsTeacher") === "1";
-    const lesson = await findLesson(parseNumericId(id), Number(session?.user?.id), session?.user?.role !== "student", testIsTeacher, includeCorrect);
+      request.nextUrl.searchParams.get("includeCorrect") === "1" && isStaffRole;
+    const testIsTeacher =
+      request.nextUrl.searchParams.get("testIsTeacher") === "1";
+    const lesson = await findLesson(
+      parseNumericId(id),
+      Number(session.user.id),
+      isStaffRole,
+      testIsTeacher,
+      includeCorrect,
+    );
     if (!lesson) {
       return jsonError("Урок не найден", 404);
     }

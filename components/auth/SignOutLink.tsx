@@ -11,6 +11,7 @@ export function SignOutLink({ children, className }: { children?: React.ReactNod
   const handleSignOut = async () => {
     await signOut();
     router.push("/login");
+    router.refresh();
   };
 
   return <div className="cursor-pointer p-2" onClick={handleSignOut}>{children? children : "Выйти"}</div>;

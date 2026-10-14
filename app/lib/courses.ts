@@ -591,10 +591,6 @@ export function toCourseFullDto(
 
 export async function findCourse(id: string) {
   const session = await auth();
-  console.log({
-    ...parseIdParam(id),
-    ...(session?.user?.id && session.user.role !== "admin" ? { enrollments: { some: { userId: Number(session.user.id) } } } : {}),
-  })
   return prisma.course.findFirst({
     where: {
       ...parseIdParam(id),

@@ -18,7 +18,6 @@ export function UserProfile() {
         router.push("/login")
         return null
     }
-    console.log(status, sessionUser?.id)
     const [user, setUser] = useState<User | null>(null);
     const fetchUser = async (signal: AbortSignal) => {
         fetch(`/api/user/${sessionUser?.id}`, {

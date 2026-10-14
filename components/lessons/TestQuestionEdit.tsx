@@ -235,7 +235,6 @@ export default function TestQuestionEdit({
   };
 
   const onOptionSaved = (option: TestQuestionOption) => {
-    console.log(option);
     if (type !== "multiple_choice" && option.isCorrect && options.some((o) => o.isCorrect)) {
       setOptions(options.map((o) => ({ ...o, isCorrect: false })));
     }

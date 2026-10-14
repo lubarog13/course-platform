@@ -8,6 +8,7 @@ import {
 } from "@/app/lib/api";
 import { USER_COURSE_STATUS_VALUES } from "@/app/lib/models";
 import { prisma } from "@/app/lib/prisma";
+import { UserCourse } from "@prisma/client";
 
 const STUDENT_ALLOWED_STATUSES = ["dropped"] as const;
 const STAFF_ALLOWED_STATUSES = USER_COURSE_STATUS_VALUES;
@@ -35,6 +36,15 @@ export type UserLessonUpdateData = {
   timeSpentSeconds?: number;
   videoProgressSeconds?: number;
   lastAccessedAt?: Date | null;
+};
+
+export type EnrollmentDto =  UserCourse & {
+  courseId: number;
+  courseName: string;
+  userId: number;
+  userName: string;
+  userSurname: string;
+  userPatronymic: string | null;
 };
 
 function asOptionalDate(value: unknown, field: string): Date | null | undefined {

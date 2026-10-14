@@ -677,7 +677,10 @@ export type TestAnswerReturnData = {
   questionId: number;
   answerText?: string | null;
   answerFileId?: number | null;
-  optionIds?: Array<{ optionId: number, isCorrect: boolean | null }>;
+  /** Выбранные студентом option id (для отображения в просмотре) */
+  selectedOptionIds?: number[];
+  /** Флаги правильности опций (разбор), не путать с выбором студента */
+  optionIds?: Array<{ optionId: number; isCorrect: boolean | null }>;
   isCorrect: boolean | null;
   score?: number;
 };
@@ -1057,6 +1060,7 @@ export function buildAttemptReview(params: {
       questionId: question.id,
       answerText: userAnswer?.answerText,
       answerFileId: userAnswer?.answerFileId,
+      selectedOptionIds: selectedIds,
       ...(optionFeedback !== undefined ? { optionIds: optionFeedback } : {}),
       isCorrect: reviewEnabled ? isCorrect : null,
       score: earned,
@@ -1227,6 +1231,23 @@ export async function saveTestAttemptAnswers(
 
 
   await prisma.$transaction(async (tx) => {
+    // Блокируем строку попытки, чтобы autosave не затёр варианты после submit
+    await tx.$executeRaw`
+      SELECT id FROM "TestAttempt" WHERE id = ${attemptId} AND user_id = ${userId} FOR UPDATE
+    `;
+    const locked = await tx.testAttempt.findFirst({
+      where: { id: attemptId, userId },
+      select: { submittedAt: true },
+    });
+    if (!locked) {
+      throw new Error("Попытка не найдена", { cause: "not_found" });
+    }
+    if (locked.submittedAt) {
+      throw new Error("Попытка уже отправлена, ответы изменить нельзя", {
+        cause: "invalid",
+      });
+    }
+
     for (const answer of data.answers) {
       const question = questionById.get(answer.questionId)!;
       const upserted = await tx.userTestAnswer.upsert({
@@ -1338,7 +1359,16 @@ export async function saveTestAttemptAnswers(
     });
   });
 
-  return findTestAttempt(attemptId, result, userId);
+  const rawAttempt = await prisma.testAttempt.findFirst({
+    where: { id: attemptId },
+    include: attemptInclude,
+  });
+  const saved = await findTestAttempt(attemptId, result, userId);
+  // answers из result — разбор; selectedAnswers — фактический выбор из БД
+  return {
+    ...saved,
+    selectedAnswers: rawAttempt?.answers ?? [],
+  };
 }
 
 async function assertLessonCourseStaff(

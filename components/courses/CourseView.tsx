@@ -25,6 +25,7 @@ export default function CourseView() {
     const [isOpen, setIsOpen] = useState(false);
     const [canEdit, setCanEdit] = useState(false);
     const [currentLessonIndex, setCurrentLessonIndex] = useState<number>(0);
+    const [openedLessonId, setOpenedLessonId] = useState<number | null>(null);
     const [lessonsList, setLessonsList] = useState<LessonDto[]>([]);
     useEffect(() => {
         const handleResize = () => {
@@ -50,14 +51,9 @@ export default function CourseView() {
             const lessons = (data.parts as CoursePartDto[]).flatMap(
                 (part) => part.lessons,
             );
+            // Не трогаем openedLessonId здесь: иначе refresh прогресса
+            // откатывает выбор на устаревший searchParams до применения router.push.
             setLessonsList(lessons);
-            if (searchParams?.get("lessonId")) {
-                const idx = lessons.findIndex(
-                    (lesson: LessonDto) =>
-                        lesson.id === parseInt(searchParams.get("lessonId") as string, 10),
-                );
-                setCurrentLessonIndex(idx >= 0 ? idx : 0);
-            }
         } catch (err) {
             if (signal.aborted) return;
             const message = err instanceof Error ? err.message : "Ошибка загрузки";
@@ -74,9 +70,47 @@ export default function CourseView() {
         fetchCourse(controller.signal);
         return () => controller.abort();
     }, [slug]);
+
+    // Синхронизация выбранного урока с URL (после клика / назад-вперёд)
+    useEffect(() => {
+        const raw = searchParams?.get("lessonId");
+        if (!raw) return;
+        const id = Number.parseInt(raw, 10);
+        if (!Number.isFinite(id)) return;
+        setOpenedLessonId(id);
+        setCurrentLessonIndex((prev) => {
+            const idx = lessonsList.findIndex((lesson) => lesson.id === id);
+            return idx >= 0 ? idx : prev;
+        });
+    }, [searchParams]);
+
+    // Первичный выбор / восстановление после загрузки списка уроков
+    useEffect(() => {
+        if (lessonsList.length === 0) return;
+        setOpenedLessonId((prev) => {
+            if (prev != null && lessonsList.some((lesson) => lesson.id === prev)) {
+                const idx = lessonsList.findIndex((lesson) => lesson.id === prev);
+                setCurrentLessonIndex(idx);
+                return prev;
+            }
+            const raw = searchParams?.get("lessonId");
+            const fromUrl = raw ? Number.parseInt(raw, 10) : NaN;
+            const urlIdx = lessonsList.findIndex((lesson) => lesson.id === fromUrl);
+            if (urlIdx >= 0) {
+                setCurrentLessonIndex(urlIdx);
+                return lessonsList[urlIdx]!.id;
+            }
+            setCurrentLessonIndex(0);
+            return lessonsList[0]!.id;
+        });
+    }, [lessonsList]);
+
     const selectLesson = (lessonId: number) => {
-        setCurrentLessonIndex(lessonsList.findIndex(lesson => lesson.id === lessonId));
+        const idx = lessonsList.findIndex((lesson) => lesson.id === lessonId);
+        setCurrentLessonIndex(idx >= 0 ? idx : 0);
+        setOpenedLessonId(lessonId);
         router.push(`/course/${slug}/learn?lessonId=${lessonId}`);
+        setIsOpen(false);
     };
     if (!slug) {
         return <NotFound text="Курс не найден" />;
@@ -87,8 +121,7 @@ export default function CourseView() {
     if (lessonsList.length === 0) {
         return <div className="flex flex-col items-center justify-center h-full min-h-screen container mx-auto px-4 pt-8 relative">В курсе пока нет уроков</div>;
     }
-    const openedLessonId = lessonsList[currentLessonIndex]?.id ?? lessonsList[0].id;
-    return  <div className='flex flex-col lg:flex-row container align-stretch mx-auto px-4 pt-8 min-h-screen relative'>
+    return  <div className='flex flex-col lg:flex-row max-w-7xl align-stretch mx-auto px-4 pt-8 min-h-screen relative'>
         {!isDesktop && (<Drawer  swipeDirection='left' modal={true} open={isOpen} onOpenChange={setIsOpen}>
             <DrawerTrigger className={`transition-all duration-300"`} render={
                 <div className='flex gap-3 items-center'>
@@ -119,7 +152,7 @@ export default function CourseView() {
         <div className='flex-1'>
             <LessonView
               canEdit={canEdit}
-              lessonId={openedLessonId}
+              lessonId={openedLessonId ?? lessonsList[0].id}
               prevLesson={currentLessonIndex > 0 ? lessonsList[currentLessonIndex - 1] : undefined}
               nextLesson={currentLessonIndex < lessonsList.length - 1 ? lessonsList[currentLessonIndex + 1] : undefined}
               partDeadline={

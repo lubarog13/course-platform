@@ -20,11 +20,34 @@ type AttemptWithAnswers = {
     answerText: string | null;
     answerFileId: number | null;
     score?: number | null;
+    selectedOptionIds?: number[];
     selectedOptions?: Array<{ optionId: number }>;
-    optionIds?: Array<{ optionId: number; isCorrect: boolean | null }>;
+    optionIds?: number[] | Array<{ optionId: number; isCorrect: boolean | null }>;
     isCorrect?: boolean | null;
   }>;
 };
+
+function selectedIdsFromTeacherAnswer(
+  answer:
+    | NonNullable<AttemptWithAnswers["answers"]>[number]
+    | undefined,
+): number[] {
+  if (!answer) return [];
+  if (answer.selectedOptions?.length) {
+    return answer.selectedOptions.map((option) => option.optionId);
+  }
+  if (answer.selectedOptionIds?.length) {
+    return answer.selectedOptionIds;
+  }
+  if (
+    Array.isArray(answer.optionIds) &&
+    answer.optionIds.length > 0 &&
+    typeof answer.optionIds[0] === "number"
+  ) {
+    return answer.optionIds as number[];
+  }
+  return [];
+}
 
 function optionTexts(
   question: LessonFullDto["testQuestions"][number],
@@ -200,10 +223,7 @@ export default function TestViewForTeacher({
         const answer = testAttempt.answers?.find(
           (item) => item.questionId === question.id,
         );
-        const selectedIds =
-          answer?.selectedOptions?.map((option) => option.optionId) ??
-          answer?.optionIds?.map((option) => option.optionId) ??
-          [];
+        const selectedIds = selectedIdsFromTeacherAnswer(answer);
         const earned = questionScores[question.id] ?? 0;
         const isCorrect =
           answer?.isCorrect ??

@@ -13,6 +13,7 @@ import NotFound from "../layout/not-found";
 import Loading from "../layout/loading";
 import { useRouter } from "next/navigation";
 import type { UserLesson } from "@prisma/client";
+import CommentList from "../comments/CommentList";
 
 type LessonViewProps = {
   canEdit: boolean;
@@ -162,7 +163,8 @@ export default function LessonView({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/lesson/${lessonId}`, { signal });
+      const qs = canEdit ? "?includeCorrect=1" : "";
+      const res = await fetch(`/api/lesson/${lessonId}${qs}`, { signal });
       if (!res.ok) {
         throw new Error("Урок не найден");
       }
@@ -205,9 +207,9 @@ export default function LessonView({
         flushSessionProgress({ keepalive: true });
       }
     };
-    // lessonId change / unmount
+    // lessonId / canEdit (includeCorrect) change / unmount
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lessonId]);
+  }, [lessonId, canEdit]);
 
   useEffect(() => {
     const onLeave = () => {
@@ -258,7 +260,7 @@ export default function LessonView({
   };
 
   return (
-    <div className="flex flex-col gap-4 container mx-auto sm:px-4 pt-8 min-h-screen relative">
+    <div className="flex flex-col gap-4 max-w-7xl mx-auto sm:px-4 pt-8 min-h-screen relative">
       <div className="flex lg:flex-nowrap flex-wrap justify-between gap-4  border-b border-gray-200 dark:border-gray-800 pb-4">
         {prevLesson ? (
           <div className="flex items-center gap-2 h-10">
@@ -338,6 +340,11 @@ export default function LessonView({
             onTimeUpdate={(seconds) => {
               videoProgressRef.current = seconds;
             }}
+          />
+        )}
+        {lesson.type !== 'test' && (
+        <CommentList
+          lessonId={lessonId}
           />
         )}
 

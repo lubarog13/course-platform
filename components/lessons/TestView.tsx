@@ -8,6 +8,17 @@ import TestQuestion from "./TestQuestion";
 import TestViewForTeacher from "./TestViewForTeacher";
 import { cn } from "@/lib/utils";
 
+type AttemptAnswerRow = {
+  questionId: number;
+  answerText: string | null;
+  answerFileId: number | null;
+  selectedOptionIds?: number[];
+  selectedOptions?: Array<{ optionId: number }>;
+  /** Фидбек разбора ИЛИ числовые id — не использовать объекты как выбор студента */
+  optionIds?: number[] | Array<{ optionId: number; isCorrect: boolean | null }>;
+  isCorrect?: boolean | null;
+};
+
 type AttemptWithAnswers = {
   id: number;
   attemptNumber?: number;
@@ -16,40 +27,39 @@ type AttemptWithAnswers = {
   score: number | null;
   maxScore: number | null;
   passed: boolean | null;
-  answers?: Array<{
-    questionId: number;
-    answerText: string | null;
-    answerFileId: number | null;
-    selectedOptions?: Array<{ optionId: number }>;
-    optionIds?: Array<{ optionId: number; isCorrect: boolean | null }>;
-    isCorrect?: boolean | null;
-  }>;
-  selectedAnswers?: Array<{
-    questionId: number;
-    answerText: string | null;
-    answerFileId: number | null;
-    selectedOptions: Array<{ optionId: number }>;
-  }>;
+  answers?: AttemptAnswerRow[];
+  selectedAnswers?: AttemptAnswerRow[];
 };
 
-function answersFromAttempt(attempt: AttemptWithAnswers): TestAnswerWrite[] {
-  if (attempt.selectedAnswers?.length) {
-    return attempt.selectedAnswers.map((answer) => ({
-      questionId: answer.questionId,
-      answerText: answer.answerText,
-      answerFileId: answer.answerFileId,
-      optionIds: answer.selectedOptions.map((option) => option.optionId),
-    }));
+function selectedIdsFromAnswer(answer: AttemptAnswerRow): number[] {
+  if (answer.selectedOptions?.length) {
+    return answer.selectedOptions.map((option) => option.optionId);
   }
+  if (answer.selectedOptionIds?.length) {
+    return answer.selectedOptionIds;
+  }
+  // Только «сырые» number[], не фидбек { optionId, isCorrect }
+  if (
+    Array.isArray(answer.optionIds) &&
+    answer.optionIds.length > 0 &&
+    typeof answer.optionIds[0] === "number"
+  ) {
+    return answer.optionIds as number[];
+  }
+  return [];
+}
 
-  return (attempt.answers ?? []).map((answer) => ({
+function answersFromAttempt(attempt: AttemptWithAnswers): TestAnswerWrite[] {
+  const rows =
+    attempt.selectedAnswers?.length
+      ? attempt.selectedAnswers
+      : (attempt.answers ?? []);
+
+  return rows.map((answer) => ({
     questionId: answer.questionId,
     answerText: answer.answerText,
     answerFileId: answer.answerFileId,
-    optionIds:
-      answer.selectedOptions?.map((option) => option.optionId) ??
-      answer.optionIds?.map((option) => option.optionId) ??
-      [],
+    optionIds: selectedIdsFromAnswer(answer),
   }));
 }
 
@@ -135,6 +145,7 @@ function TestViewStudent({
   const [isLoadingReview, setIsLoadingReview] = useState(false);
   const answersRef = useRef(answers);
   const submittingRef = useRef(false);
+  const saveChainRef = useRef(Promise.resolve<unknown>(undefined));
 
   useEffect(() => {
     answersRef.current = answers;
@@ -148,54 +159,72 @@ function TestViewStudent({
 
   const saveAnswers = useCallback(
     async (submit: boolean) => {
-      if (!testAttempt || submittingRef.current) return null;
+      if (!testAttempt) return null;
       if (isDeadlinePassed && !submit) {
         setError("Срок сдачи части курса истёк");
         return null;
       }
-      if (submit) submittingRef.current = true;
 
-      setIsSaving(true);
-      setError(null);
-      try {
-        const response = await fetch(`/api/test-attempt/${testAttempt.id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            answers: answersRef.current,
-            submit,
-          }),
-        });
-        if (!response.ok) {
-          const payload = (await response.json().catch(() => null)) as {
-            error?: string;
-          } | null;
-          throw new Error(payload?.error ?? "Не удалось сохранить ответы");
-        }
-        const data = (await response.json()) as AttemptWithAnswers & {
-          answers?: TestAnswerReturnData[];
-        };
-        if (submit) {
-          setTestAttempt(data);
-          setIsSubmitted(true);
-          setIsStarted(false);
-          if (Array.isArray(data.answers) && data.answers[0] && "isCorrect" in data.answers[0]) {
-            setReviewAnswers(data.answers as TestAnswerReturnData[]);
-          }
-          onAttemptSubmitted?.({
-            score: data.score ?? null,
-            maxScore: data.maxScore ?? null,
-            passed: data.passed ?? null,
+      // Очередь: не даём устаревшему autosave затереть варианты после submit
+      const run = async () => {
+        if (submittingRef.current && !submit) return null;
+        if (submit) submittingRef.current = true;
+
+        setIsSaving(true);
+        setError(null);
+        try {
+          const response = await fetch(`/api/test-attempt/${testAttempt.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              answers: answersRef.current,
+              submit,
+            }),
           });
+          if (!response.ok) {
+            const payload = (await response.json().catch(() => null)) as {
+              error?: string;
+            } | null;
+            throw new Error(payload?.error ?? "Не удалось сохранить ответы");
+          }
+          const data = (await response.json()) as AttemptWithAnswers & {
+            answers?: TestAnswerReturnData[];
+          };
+          if (submit) {
+            setTestAttempt(data);
+            setIsSubmitted(true);
+            setIsStarted(false);
+            if (
+              Array.isArray(data.answers) &&
+              data.answers[0] &&
+              "isCorrect" in data.answers[0]
+            ) {
+              setReviewAnswers(data.answers as TestAnswerReturnData[]);
+            }
+            setAnswers(answersFromAttempt(data));
+            onAttemptSubmitted?.({
+              score: data.score ?? null,
+              maxScore: data.maxScore ?? null,
+              passed: data.passed ?? null,
+            });
+            getTestAttempt();
+          }
+          return data;
+        } catch (err) {
+          setError(err instanceof Error ? err.message : "Ошибка сохранения");
+          if (submit) submittingRef.current = false;
+          return null;
+        } finally {
+          setIsSaving(false);
         }
-        return data;
-      } catch (err) {
-        setError(err instanceof Error ? err.message : "Ошибка сохранения");
-        if (submit) submittingRef.current = false;
-        return null;
-      } finally {
-        setIsSaving(false);
-      }
+      };
+
+      const next = saveChainRef.current.then(run, run);
+      saveChainRef.current = next.then(
+        () => undefined,
+        () => undefined,
+      );
+      return (await next) as AttemptWithAnswers | null;
     },
     [testAttempt, onAttemptSubmitted, isDeadlinePassed],
   );
