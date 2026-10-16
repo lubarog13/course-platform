@@ -2,7 +2,7 @@
 
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem } from "../ui/dropdown-menu";
 import { Button } from "../ui/button";
-import { CircleUserRound, User as UserIcon, DockIcon, FileTextIcon, LogInIcon } from "lucide-react";
+import { CircleUserRound, User as UserIcon, DockIcon, FileTextIcon, LogInIcon, MessageCircleIcon } from "lucide-react";
 import { SignOutLink } from "../auth/SignOutLink";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
@@ -39,6 +39,12 @@ export function UserMenu() {
               <Link href="/user/certificates" className="py-2 flex items-center gap-2 whitespace-nowrap">
                 <DockIcon className="w-4 h-4" />
                 Мои сертификаты
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem>
+              <Link href="/user/messages" className="py-2 flex items-center gap-2 whitespace-nowrap">
+                <MessageCircleIcon className="w-4 h-4" />
+                Сообщения
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem>

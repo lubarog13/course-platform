@@ -10,6 +10,7 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/navigation";
 import type { CourseFullDto } from "@/app/lib/courses";
 import CourseEdit from "../courses/CourseEdit";
+import ErrorView from "../layout/error-view";
 
 function createDefaultLesson(overrides?: Partial<LessonFullDto>): LessonFullDto {
   return {
@@ -178,11 +179,11 @@ export default function EditorView() {
   }
 
   if (error) {
-    return <NotFound text={error} showHomeButton={true} />;
+    return <ErrorView title="Ошибка загрузки" text={error} showReloadButton={true} showBackButton={true} />;
   }
 
   if (userId === null) {
-    return <NotFound text="Этот раздел доступен только для преподавателей" />;
+    return <ErrorView title="Ошибка доступа" text="Этот раздел доступен только для преподавателей" type="access_denied" showReloadButton={false} showBackButton={true} />;
   }
 
   return (
