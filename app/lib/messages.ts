@@ -7,6 +7,7 @@ import {
   requireObject,
 } from "@/app/lib/api";
 import { prisma } from "@/app/lib/prisma";
+import { isCourseStaff } from "./enrollment";
 
 export type Receiver = {
   id: number;
@@ -16,6 +17,7 @@ export type Receiver = {
   email: string;
   phone: string | null;
   role: Role | string;
+  roleDescription?: string
 };
 
 export type MessageDto = Message & {
@@ -32,6 +34,7 @@ export type ConversationDto = {
     sentAt: Date;
     read: boolean;
     senderId: number;
+    hasAttachments: boolean;
   } | null;
   unreadCount: number;
 };
@@ -187,7 +190,12 @@ export type ThreadMessagesResult = {
 export async function listMessagesWithPeer(
   viewerId: number,
   peerId: number,
-  options: { limit?: number; beforeId?: number | null } = {},
+  options: {
+    limit?: number;
+    beforeId?: number | null;
+    /** Только сообщения новее этого id (для polling) */
+    afterId?: number | null;
+  } = {},
 ): Promise<ThreadMessagesResult> {
   if (viewerId === peerId) {
     throw new Error("Нельзя открыть диалог с самим собой", { cause: "invalid" });
@@ -195,6 +203,13 @@ export async function listMessagesWithPeer(
 
   const limit = Math.min(100, Math.max(1, options.limit ?? 50));
   const beforeId = options.beforeId ?? null;
+  const afterId = options.afterId ?? null;
+
+  if (beforeId != null && afterId != null) {
+    throw new Error("Нельзя одновременно указывать beforeId и afterId", {
+      cause: "invalid",
+    });
+  }
 
   const peer = await prisma.user.findFirst({
     where: { id: peerId, deletedAt: null },
@@ -202,6 +217,51 @@ export async function listMessagesWithPeer(
   });
   if (!peer) {
     throw new Error("Собеседник не найден", { cause: "not_found" });
+  }
+
+  const threadOr = [
+    {
+      senderId: viewerId,
+      receiverId: peerId,
+      deletedBySenderAt: null,
+    },
+    {
+      senderId: peerId,
+      receiverId: viewerId,
+      deletedByReceiverAt: null,
+    },
+  ];
+
+  if (afterId != null) {
+    const anchor = await prisma.message.findFirst({
+      where: {
+        id: afterId,
+        OR: [
+          { senderId: viewerId, receiverId: peerId },
+          { senderId: peerId, receiverId: viewerId },
+        ],
+      },
+      select: { id: true },
+    });
+    if (!anchor) {
+      throw new Error("Сообщение-якорь не найдено", { cause: "not_found" });
+    }
+
+    const rows = await prisma.message.findMany({
+      where: {
+        OR: threadOr,
+        id: { gt: afterId },
+      },
+      include: messageInclude,
+      orderBy: [{ sentAt: "asc" }, { id: "asc" }],
+      take: limit,
+    });
+
+    return {
+      messages: rows.map((message) => serializeMessage(message, viewerId)),
+      hasMore: false,
+      limit,
+    };
   }
 
   let beforeSentAt: Date | undefined;
@@ -223,18 +283,7 @@ export async function listMessagesWithPeer(
   }
 
   const threadWhere = {
-    OR: [
-      {
-        senderId: viewerId,
-        receiverId: peerId,
-        deletedBySenderAt: null,
-      },
-      {
-        senderId: peerId,
-        receiverId: viewerId,
-        deletedByReceiverAt: null,
-      },
-    ],
+    OR: threadOr,
     ...(beforeSentAt ? { sentAt: { lt: beforeSentAt } } : {}),
   };
 
@@ -268,6 +317,15 @@ export async function listConversations(viewerId: number): Promise<ConversationD
     include: {
       sender: { select: userPeerSelect },
       receiver: { select: userPeerSelect },
+      attachments: {
+        select: {
+          file: {
+            select: {
+              id: true,
+            },
+          },
+        },
+      },
     },
     orderBy: { sentAt: "desc" },
   });
@@ -302,6 +360,7 @@ export async function listConversations(viewerId: number): Promise<ConversationD
           sentAt: message.sentAt,
           read: message.read,
           senderId: message.senderId,
+          hasAttachments: message.attachments.length > 0,
         },
         unreadCount:
           message.receiverId === viewerId && !message.read ? 1 : 0,
@@ -316,6 +375,115 @@ export async function listConversations(viewerId: number): Promise<ConversationD
     const bTime = b.lastMessage?.sentAt.getTime() ?? 0;
     return bTime - aTime;
   });
+}
+
+/**Список возможных получателей сообщения. */
+export async function listPossibleReceivers(viewerId: number): Promise<Receiver[]> {
+  const courses = await prisma.userCourse.findMany({
+    where: { userId: viewerId},
+    select: { courseId: true },
+  });
+
+  const courseIds = courses.map((course) => course.courseId);
+
+  const result = [];
+  for (const courseId of courseIds) {
+    const instructors = await prisma.courseInstructor.findMany({
+      where: { courseId, deletedAt: null },
+      select: { 
+        user: {
+        select: {
+          id: true,
+          name: true,
+          surname: true,
+          patronymic: true,
+          email: true,
+          phone: true,
+          role: true,
+        },
+      },
+    course: {
+      select: {
+        name: true,
+      }
+    }
+    },
+    });
+
+    result.push(...instructors.map((instructor) => ({
+      id: instructor.user.id,
+      name: instructor.user.name,
+      surname: instructor.user.surname,
+      patronymic: instructor.user.patronymic,
+      email: instructor.user.email,
+      phone: instructor.user.phone,
+      role: instructor.user.role,
+      roleDescription: 'Преподаватель курса ' + instructor.course.name,
+    })));
+  }
+  const coursesAsTeacher = await prisma.courseInstructor.findMany({
+    where: { userId: viewerId},
+    select: {
+      course: {
+        select: {
+          id: true,
+          name: true,
+        },
+      },
+    },
+  });
+
+  for (const course of coursesAsTeacher) {
+      const students = await prisma.userCourse.findMany({
+        where: { courseId: course.course.id},
+        select: { user: {
+          select: {
+            id: true,
+            name: true,
+            surname: true,
+            patronymic: true,
+            email: true,
+            phone: true,
+            role: true,
+          },
+        },
+      },
+    });
+
+    result.push(...students.map((student) => ({
+      id: student.user.id,
+      name: student.user.name,
+      surname: student.user.surname,
+      patronymic: student.user.patronymic,
+      email: student.user.email,
+      phone: student.user.phone,
+      role: student.user.role,
+      roleDescription: 'Студент курса ' + course.course.name,
+    })));
+  }
+  const admins = await prisma.user.findMany({
+    where: { role: 'admin'},
+    select: {
+      id: true,
+      name: true,
+      surname: true,
+      patronymic: true,
+      email: true,
+      phone: true,
+      role: true,
+    },
+  });
+  result.push(...admins.map((admin) => ({
+    id: admin.id,
+    name: admin.name,
+    surname: admin.surname,
+    patronymic: admin.patronymic,
+    email: admin.email,
+    phone: admin.phone,
+    role: admin.role,
+    roleDescription: 'Администратор',
+  })));
+  return result;
 }
 
 export async function createMessage(senderId: number, data: MessageCreateData) {
@@ -435,6 +603,43 @@ export async function markThreadRead(viewerId: number, peerId: number) {
     },
     data: { read: true },
   });
+}
+
+/** Мягкое удаление всего диалога для текущего пользователя. */
+export async function deleteThreadWithPeer(viewerId: number, peerId: number) {
+  if (viewerId === peerId) {
+    throw new Error("Нельзя удалить диалог с самим собой", { cause: "invalid" });
+  }
+
+  const peer = await prisma.user.findFirst({
+    where: { id: peerId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!peer) {
+    throw new Error("Собеседник не найден", { cause: "not_found" });
+  }
+
+  const now = new Date();
+  await prisma.$transaction([
+    prisma.message.updateMany({
+      where: {
+        senderId: viewerId,
+        receiverId: peerId,
+        deletedBySenderAt: null,
+      },
+      data: { deletedBySenderAt: now },
+    }),
+    prisma.message.updateMany({
+      where: {
+        senderId: peerId,
+        receiverId: viewerId,
+        deletedByReceiverAt: null,
+      },
+      data: { deletedByReceiverAt: now },
+    }),
+  ]);
+
+  return { ok: true as const };
 }
 
 export function parseOptionalPeerId(value: string | null): number | null {

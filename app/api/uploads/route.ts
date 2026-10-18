@@ -69,7 +69,7 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ error: "Размер файла превышает 100 МБ" }, { status: 400 });
     }
     const extension = fileData.name.split(".").pop();
-    const filename = `${crypto.randomUUID()}${extension || ""}`;
+    const filename = `${crypto.randomUUID()}${extension? "." + extension : ""}`;
     const type = fileData.type || "application/octet-stream";
 
     const imagesDir = getUploadsDir();
@@ -84,7 +84,7 @@ export async function POST(request: NextRequest) {
       const currentUser = Number(session.user.id);
     const fileRecord = await prisma.file.create({
         data: {
-            originalName: filename + "." + extension,
+            originalName: filename,
             url: path.join(imagesDir, filename),
             sizeBytes: fileData.size,
             mimeType: type,

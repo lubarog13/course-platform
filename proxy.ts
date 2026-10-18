@@ -14,5 +14,6 @@ export const config = {
     "/course/:slug/learn/:path*",
     "/login",
     "/register",
+    `/user/:path*`,
   ],
 };

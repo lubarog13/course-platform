@@ -6,7 +6,8 @@ import Dropzone from "react-dropzone";
 import { Input } from "@/components/ui/input";
 import { File as FileModel } from "@/app/lib/models";
 import { Button } from "@/components/ui/button";
-export default function FileUploader({ onUploaded, multiple = false }: { onUploaded: (files: FileModel[]) => void, multiple?: boolean }) {
+import { cn } from "@/lib/utils";
+export default function FileUploader({ onUploaded, multiple = false, className = "" }: { onUploaded: (files: FileModel[]) => void, multiple?: boolean, className?: string }) {
     const [files, setFiles] = useState<File[]>([]);
     const [fileModels, setFileModels] = useState<FileModel[]>([]);
     const [allUploaded, setAllUploaded] = useState(false);
@@ -52,7 +53,7 @@ export default function FileUploader({ onUploaded, multiple = false }: { onUploa
     }
 
     return (
-        <div className="flex flex-col justify-center gap-4 w-full my-4">
+        <div className="flex flex-col justify-center gap-4 w-full my-4" >
         <Dropzone accept={{
             "image/*": [".png", ".jpg", ".jpeg", ".gif", ".webp"],
             "video/*": [".mp4", ".mov", ".avi", ".mkv", ".webm"],
@@ -62,7 +63,7 @@ export default function FileUploader({ onUploaded, multiple = false }: { onUploa
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
         }} onDrop={handleDrop}>
 {({getRootProps, getInputProps}) => (
-    <section className="w-full">
+    <section className={cn("w-full", className)}>
       <div {...getRootProps({className: 'border-2 border-dashed border-gray-300 rounded-md p-4 w-full min-h-[100px] cursor-pointer flex items-center justify-center'})}>
         <input {...getInputProps()} />
         <p className="text-center">{uploadText} {uploading && <Loader2 className="w-5 h-5 ml-2 inline-block animate-spin" />}
@@ -76,7 +77,7 @@ export default function FileUploader({ onUploaded, multiple = false }: { onUploa
         </Dropzone>
     {files.length > 0 && (
         <>
-        <div className="flex flex-col text-sm text-gray-500 justify-center gap-4">
+        <div className={cn("flex flex-col text-sm text-gray-500 justify-center gap-4", className)}>
             {files.map((file) => (
                 <div key={file.name} className="flex items-center gap-2">
                     <FileImage className="w-5 h-5 inline-block" />
