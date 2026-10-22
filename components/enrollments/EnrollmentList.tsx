@@ -18,6 +18,7 @@ import { Button } from "../ui/button";
 import { CheckIcon, XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ErrorView from "../layout/error-view";
+import { useRouter } from "next/navigation";
 
 const statusAdapters: Record<EnrollmentStatus, string> = {
   [EnrollmentStatus.pending]: "Ожидает рассмотрения",
@@ -35,7 +36,7 @@ export default function EnrollmentList() {
   const [actionId, setActionId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const { data: session, status } = useSession();
-
+  const router = useRouter();
   const fetchEnrollments = useCallback(async () => {
     try {
       const res = await fetch("/api/enroll");
@@ -150,7 +151,7 @@ export default function EnrollmentList() {
           return (
             <Card key={enrollment.id}>
               <CardHeader>
-                <CardTitle>
+                <CardTitle className="cursor-pointer hover:underline" onClick={() => void router.push(`/user/profile/${enrollment.userId}`)}>
                   {enrollment.userSurname} {enrollment.userName}{" "}
                   {enrollment.userPatronymic}
                 </CardTitle>

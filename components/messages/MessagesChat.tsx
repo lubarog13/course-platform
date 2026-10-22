@@ -65,6 +65,7 @@ import { Input } from "../ui/input";
 import FileUploader from "../base/FileUploader";
 import { File as FileModel } from "@/app/lib/models";
 import dayjs from "dayjs";
+import { cn } from "@/lib/utils";
 
 const DEFAULT_LIMIT = 50;
 const POLL_INTERVAL_MS = 5000;
@@ -560,7 +561,7 @@ export default function MessagesChat({
                         messageId={String(message.id)}
                         scrollAnchor={message.id === firstUnreadId}
                       >
-                        <ContextMenu>
+                        <ContextMenu disabled={!!(message.deletedByReceiverAt || message.deletedBySenderAt) || message.senderId !== userId}>
                           <ContextMenuTrigger>
                         <Message
                           align={
@@ -569,16 +570,14 @@ export default function MessagesChat({
                         >
                           <MessageContent>
                             <Bubble
-                              variant={
-                                message.receiverId === userId
-                                  ? "default"
-                                  : "secondary"
-                              }
+                              variant="muted"
                             >
-                              <BubbleContent>
+                              <BubbleContent   
+                               className={cn(message.receiverId === userId ? "bg-blue-300! dark:bg-blue-900!" : "")}
+                              >
                                 <div className="flex flex-col gap-1">
                                   {message.content && (
-                                    <p className="text-sm">{message.content}</p>
+                                    <p className={cn("text-sm", message.deletedByReceiverAt || message.deletedBySenderAt ? "text-muted-foreground" : "")}>{message.content}</p>
                                   )}
                                   {message.attachments.length > 0 && (
                                     <div className="flex flex-wrap gap-1">
@@ -685,7 +684,7 @@ export default function MessagesChat({
                 <div className="h-14 w-full px-3 py-2.5">
                   <Input
                     type="text"
-                    className="border-none focus-visible:ring-0 focus-visible:ring-offset-0"
+                    className="border-none bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
                     value={nextMessage}
                     onChange={(e) => setNextMessage(e.target.value)}
                     placeholder="Введите сообщение…"

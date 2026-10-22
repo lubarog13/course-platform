@@ -105,7 +105,7 @@ export function CoursePreview({ course }: { course: CourseDto }) {
             <div className="mb-6 text-xl text-gray-700 dark:text-gray-300">
               <b>Преподаватели:</b>
               <a
-                href={`/instructor/${course.instructors[0].user.id}`}
+                href={`/user/profile/${course.instructors[0].user.id}`}
                 className="hover:underline"
               >
                 {" "}

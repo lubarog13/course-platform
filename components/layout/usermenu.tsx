@@ -30,7 +30,7 @@ export function UserMenu() {
           </DropdownMenuTrigger>
           <DropdownMenuContent className="w-full">
             <DropdownMenuItem>
-              <Link href="/user" className="py-2 flex items-center gap-2 whitespace-nowrap">
+              <Link href="/user/profile" className="py-2 flex items-center gap-2 whitespace-nowrap">
                 <UserIcon className="w-4 h-4" />
                 Профиль
               </Link>

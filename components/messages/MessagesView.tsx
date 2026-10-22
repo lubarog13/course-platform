@@ -10,6 +10,7 @@ import MessagesChat from "./MessagesChat";
 import MessagesSidebar from "./MessagesSidebar";
 import type { ConversationDto, Receiver } from "@/app/lib/messages";
 import { cn } from "@/lib/utils";
+import { useRouter } from "next/navigation";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
@@ -19,7 +20,7 @@ export default function MessagesView() {
   const [refetch, setRefetch] = useState(false);
   const [currentTab, setCurrentTab] = useState<"sidebar" | "chat">("sidebar");
   const [isDesktop, setIsDesktop] = useState(false);
-
+  const router = useRouter();
   useEffect(() => {
     const mq = window.matchMedia("(min-width: 768px)");
     const sync = () => setIsDesktop(mq.matches);
@@ -28,8 +29,18 @@ export default function MessagesView() {
     return () => mq.removeEventListener("change", sync);
   }, []);
 
+  const setReceiverId = (receiver: Receiver | null) => {
+    setReceiver(receiver);
+    if (receiver) {
+      const queryParams = new URLSearchParams({ receiverId: receiver.id.toString() });
+      router.replace(`/user/messages?${queryParams.toString()}`);
+    } else {
+      router.replace(`/user/messages`);
+    }
+  }
+
   const openChat = (next: Receiver) => {
-    setReceiver(next);
+    setReceiverId(next);
     setCurrentTab("chat");
   };
 
@@ -57,7 +68,7 @@ export default function MessagesView() {
   const handleChatDeleted = () => {
     setRefetch((value) => !value);
     setCurrentTab("sidebar");
-    setReceiver(null);
+    setReceiverId(null);
   };
 
   if (status === "loading") {
@@ -92,7 +103,7 @@ export default function MessagesView() {
         <AnimatePresence
           initial={false}
           onExitComplete={() => {
-            if (currentTab === "sidebar") setReceiver(null);
+            if (currentTab === "sidebar") setReceiverId(null);
           }}
         >
           {showSidebar && (

@@ -159,15 +159,12 @@ function serializeMessage(
   },
   viewerId: number,
 ): MessageDto {
-  const deletedForViewer =
-    (message.senderId === viewerId && message.deletedBySenderAt != null) ||
-    (message.receiverId === viewerId && message.deletedByReceiverAt != null);
-
+  const deletedForViewer = message.deletedByReceiverAt != null || message.deletedBySenderAt != null;
   return {
     id: message.id,
     senderId: message.senderId,
     receiverId: message.receiverId,
-    content: deletedForViewer ? "" : message.content,
+    content: deletedForViewer ? "Сообщение удалено" : message.content,
     sentAt: message.sentAt,
     read: message.read,
     deletedBySenderAt: message.deletedBySenderAt,
@@ -389,7 +386,7 @@ export async function listPossibleReceivers(viewerId: number): Promise<Receiver[
   const result = [];
   for (const courseId of courseIds) {
     const instructors = await prisma.courseInstructor.findMany({
-      where: { courseId, deletedAt: null },
+      where: { courseId },
       select: { 
         user: {
         select: {

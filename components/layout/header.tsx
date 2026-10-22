@@ -3,6 +3,7 @@ import { Button } from "../ui/button";
 import { CircleUserRound, Bell, LayoutDashboard, UserGroup, User as UserIcon, DockIcon, SettingsIcon, FileTextIcon, LogOutIcon, LogInIcon } from "lucide-react";
 import Link from "next/link";
 import { UserMenu } from "./usermenu";
+import NotificationBell from "./notificationBell";
 
 
 export default function Header() {
@@ -24,11 +25,7 @@ export default function Header() {
         </div>
         <div className="flex items-center gap-2 ml-auto">
         <ThemeToggle />
-        <Link href="/notifications">
-        <Button variant="ghost" size='icon'>
-          <Bell className="w-4 h-4" />
-        </Button>
-        </Link>
+        <NotificationBell />
         <UserMenu />
         </div>
       </div>
