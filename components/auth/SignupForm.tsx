@@ -26,7 +26,7 @@ export function SignupForm({editMode = false, user}: {editMode: boolean, user?: 
   const params = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const { data: session, } = useSession()
+  const { data: session, update } = useSession()
   const userRole = session?.user?.role
   const adminEdit = userRole === "admin"
   const form = useForm<z.infer<typeof signUpSchema>>({
@@ -74,6 +74,7 @@ export function SignupForm({editMode = false, user}: {editMode: boolean, user?: 
         });
       }
       if (!editMode) {
+        await update();
         router.push(params.get("next") ?? "/");
         router.refresh();
       }

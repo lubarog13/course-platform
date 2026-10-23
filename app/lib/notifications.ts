@@ -18,6 +18,7 @@ export async function getNotifications(
   limit: number,
   offset: number,
 ): Promise<{ notifications: NotificationFull[]; total: number }> {
+  console.log("getNotifications", userId, limit, offset);
   const notifications = await prisma.notification.findMany({
     where: {
       userId,

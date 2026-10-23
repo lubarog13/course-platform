@@ -6,20 +6,14 @@ import { CircleUserRound, User as UserIcon, DockIcon, FileTextIcon, LogInIcon, M
 import { SignOutLink } from "../auth/SignOutLink";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 
 export function UserMenu() {
-  const { data: session, status } = useSession()
-  const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const { status } = useSession()
+  const isAuthenticated = status === "authenticated"
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const nextUrl = pathname + searchParams.toString()
-  useEffect(() => {
-    if (status === "authenticated") {
-      setIsAuthenticated(true)
-    }
-  }, [status])
+  const nextUrl = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`
 
   return (
     <>

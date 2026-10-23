@@ -11,11 +11,13 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2, LogInIcon } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { useSession } from "next-auth/react";
 
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
+  const { update } = useSession();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const form = useForm<z.infer<typeof signInSchema>>({
@@ -35,6 +37,7 @@ export function LoginForm() {
         setError(result.error);
         return;
       }
+      await update();
       router.push(params.get("next") ?? "/");
       router.refresh();
     } catch {
