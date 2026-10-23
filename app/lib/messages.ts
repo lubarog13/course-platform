@@ -480,6 +480,36 @@ export async function listPossibleReceivers(viewerId: number): Promise<Receiver[
     role: admin.role,
     roleDescription: 'Администратор',
   })));
+  const adminIndex = result.findIndex((admin) => admin.id === viewerId);
+  if (adminIndex !== -1) {
+    result.splice(adminIndex, 1);
+    let teachers = await prisma.courseInstructor.findMany({
+      select: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            surname: true,
+            patronymic: true,
+            email: true,
+            phone: true,
+            role: true,
+          },
+        },
+      },
+    });
+    teachers = teachers.filter((teacher) => !result.find((r) => r.id === teacher.user.id));
+    result.push(...teachers.map((teacher) => ({
+      id: teacher.user.id,
+      name: teacher.user.name,
+      surname: teacher.user.surname,
+      patronymic: teacher.user.patronymic,
+      email: teacher.user.email,
+      phone: teacher.user.phone,
+      role: 'teacher',
+      roleDescription: 'Преподаватель курса ' + teacher.user.name,
+    })));
+  }
   return result;
 }
 

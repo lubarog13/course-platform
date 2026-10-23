@@ -9,12 +9,12 @@ import { useSession } from "next-auth/react";
 import { usePathname, useSearchParams } from "next/navigation";
 
 export function UserMenu() {
-  const { status } = useSession()
+  const { status, data } = useSession()
   const isAuthenticated = status === "authenticated"
   const pathname = usePathname()
   const searchParams = useSearchParams()
   const nextUrl = `${pathname}${searchParams.toString() ? `?${searchParams.toString()}` : ""}`
-
+  const role = data?.user?.role
   return (
     <>
     {isAuthenticated &&
@@ -32,7 +32,7 @@ export function UserMenu() {
             <DropdownMenuItem>
               <Link href="/user/certificates" className="py-2 flex items-center gap-2 whitespace-nowrap">
                 <DockIcon className="w-4 h-4" />
-                Мои сертификаты
+                {role === 'student' ? 'Мои сертификаты' : 'Сертификаты'}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem>
@@ -44,7 +44,7 @@ export function UserMenu() {
             <DropdownMenuItem>
               <Link href="/user/enrollments" className="py-2 flex items-center gap-2 whitespace-nowrap">
                 <FileTextIcon className="w-4 h-4" />
-                Мои заявки
+                {role === 'student' ? 'Мои заявки' : 'Заявки'}
               </Link>
             </DropdownMenuItem>
             <DropdownMenuItem>

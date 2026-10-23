@@ -35,10 +35,10 @@ export async function GET(request: NextRequest) {
       order: params.get("order"),
       level: params.get("level"),
       category: params.get("category"),
-      instructor: params.get("instructor"),
+      instructor: session?.user?.role === "teacher" && forUser ? session?.user?.id : params.get("instructor"),
       tags: params.get("tags")?.split(",") ?? [],
       search: params.get("search"),
-      enrolled: params.get("enrolled") ? Number(session?.user?.id) : null,
+      enrolled: params.get("enrolled") && session?.user?.role !== "teacher" ? Number(session?.user?.id) : null,
       viewerId: Number.isFinite(viewerId) ? viewerId : null,
       viewerIsAdmin: session?.user?.role === "admin",
     });
