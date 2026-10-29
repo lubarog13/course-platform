@@ -57,6 +57,7 @@ Enum NotificationType {
   course_enrollment_request
   course_enrollment_request_accepted
   course_enrollment_request_rejected
+  course_review
 }
 
 // --- Пользователи и файлы ---

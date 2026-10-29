@@ -93,6 +93,10 @@ export const NotificationType = {
   new_message: "new_message",
   lesson_comment: "lesson_comment",
   course_published: "course_published",
+  course_enrollment_request: "course_enrollment_request",
+  course_enrollment_request_accepted: "course_enrollment_request_accepted",
+  course_enrollment_request_rejected: "course_enrollment_request_rejected",
+  course_review: "course_review",
 } as const;
 export type NotificationType =
   (typeof NotificationType)[keyof typeof NotificationType];

@@ -32,7 +32,7 @@ export default async function ProfilePage({ params }: PageProps) {
 
   if (!user) {
     return (
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 min-h-screen">
         <NotFound text="Пользователь не найден" />
       </main>
     );
@@ -42,7 +42,7 @@ export default async function ProfilePage({ params }: PageProps) {
   const isOwn = !!sessionId && sessionId === String(user.id);
 
   return (
-    <main>
+    <main className="min-h-screen">
       <PublicUserProfile
         user={user}
         isOwn={isOwn}

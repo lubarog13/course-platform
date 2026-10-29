@@ -28,14 +28,14 @@ export default async function ProfilePage() {
   const user = await getPublicUserProfile(session?.user?.id ?? "");
   if (!user) {
     return (
-      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
+      <main className="mx-auto w-full max-w-6xl flex-1 px-4 py-8 min-h-screen">
         <NotFound text="Пользователь не найден" />
       </main>
     );
   }
 
   return (
-    <main>
+    <main className="min-h-screen">
       <PublicUserProfile
         user={user}
         isOwn={true}
