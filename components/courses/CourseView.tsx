@@ -11,6 +11,7 @@ import LessonView from "../lessons/LessonView";
 import {useRouter} from 'next/navigation';
 import NotFound from "../layout/not-found";
 import Loading from '../layout/loading';
+import LessonProgress from "../lessons/LessonProgress";
 
 export default function CourseView() {
     const params = useParams();
@@ -24,7 +25,7 @@ export default function CourseView() {
     const [isDesktop, setIsDesktop] = useState(true);
     const [isOpen, setIsOpen] = useState(false);
     const [canEdit, setCanEdit] = useState(false);
-    const [currentLessonIndex, setCurrentLessonIndex] = useState<number>(0);
+    const [currentLessonIndex, setCurrentLessonIndex] = useState<number>(-1);
     const [openedLessonId, setOpenedLessonId] = useState<number | null>(null);
     const [lessonsList, setLessonsList] = useState<LessonDto[]>([]);
     useEffect(() => {
@@ -100,12 +101,18 @@ export default function CourseView() {
                 setCurrentLessonIndex(urlIdx);
                 return lessonsList[urlIdx]!.id;
             }
-            setCurrentLessonIndex(0);
-            return lessonsList[0]!.id;
+            setCurrentLessonIndex(-1);
+            return null;
         });
     }, [lessonsList]);
 
-    const selectLesson = (lessonId: number) => {
+    const selectLesson = (lessonId: number | null) => {
+        if (lessonId === null) {
+            setOpenedLessonId(null);
+            router.push(`/course/${slug}/learn`);
+            setIsOpen(false);
+            return;
+        }
         const idx = lessonsList.findIndex((lesson) => lesson.id === lessonId);
         setCurrentLessonIndex(idx >= 0 ? idx : 0);
         setOpenedLessonId(lessonId);
@@ -150,6 +157,7 @@ export default function CourseView() {
         </Drawer>)}
         {isDesktop && (<CourseSidebar courseParts={courseParts} courseName={courseName ?? ""} openedLessonId={openedLessonId} canEdit={canEdit} onLessonClick={selectLesson} />)}
         <div className='flex-1'>
+            {openedLessonId? (
             <LessonView
               canEdit={canEdit}
               lessonId={openedLessonId ?? lessonsList[0].id}
@@ -164,7 +172,10 @@ export default function CourseView() {
               onProgressUpdate={() => {
                 fetchCourse(new AbortController().signal);
               }}
-            />
+            />)
+             : (
+                <LessonProgress courseParts={courseParts} courseSlug={slug} canEdit={canEdit} />
+            )}
             </div>
     </div>;
 }

@@ -13,7 +13,7 @@ import {
     ItemTitle,
   } from "@/components/ui/item";
 import { BookOpenText, SquarePlay, PenLine, CircleDashedCheck } from "lucide-react";
-export default function CourseSidebar({courseParts, courseName, openedLessonId, canEdit, onLessonClick}: {courseParts: CoursePartDto[], courseName: string, openedLessonId: number | null, canEdit: boolean, onLessonClick: (lessonId: number) => void}) {
+export default function CourseSidebar({courseParts, courseName, openedLessonId, canEdit, onLessonClick}: {courseParts: CoursePartDto[], courseName: string, openedLessonId: number | null, canEdit: boolean, onLessonClick: (lessonId: number | null) => void}) {
     const [openedIndex, setOpenedIndex] = useState<number | null>(null);
     const router = useRouter();
     const openLessonChange = () => {
@@ -53,6 +53,14 @@ export default function CourseSidebar({courseParts, courseName, openedLessonId, 
         <div className="lg:border-r border-gray-200 p-4 pr-6 flex flex-col w-full lg:w-1/4 min-w-[300px]">
             <h1 className="mb-6 text-2xl font-bold">{courseName}</h1>
             <div className="flex flex-col gap-2">
+            <Item className="cursor-pointer items-center" onClick={() => onLessonClick(null)}>
+                                <ItemMedia variant="icon">
+                                    <CircleDashedCheck className="w-10 h-10" />
+                                </ItemMedia>
+                                <ItemContent>
+                                    <ItemTitle className="text-lg">Прогресс курса</ItemTitle>
+                                </ItemContent>
+                            </Item>
                 {courseParts.map((coursePart, index) => (
                         <Collapsible className="mb-4" key={coursePart.id} open={openedIndex === index} onOpenChange={(open) => setOpenedIndex(open ? index : null)}>
                             <CollapsibleTrigger className="flex items-center gap-3 cursor-pointer hover:text-gray-800 dark:hover:text-gray-200">

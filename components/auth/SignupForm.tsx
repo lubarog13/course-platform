@@ -10,36 +10,64 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useState, type Ref } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, Link, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { IMaskMixin } from "react-imask";
-import {User} from '@prisma/client'
+import Link from "next/link";
+import { User } from "@prisma/client";
 import { UserDetails } from "@/app/lib/models";
 import { useSession } from "next-auth/react";
 import { toast } from "../ui/toast";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 /** IMask даёт inputRef — прокидываем в наш Input как ref */
 const PhoneInput = IMaskMixin(({ inputRef, ...props }) => (
   <Input {...props} ref={inputRef as Ref<HTMLInputElement>} />
 ));
-export function SignupForm({editMode = false, user}: {editMode: boolean, user?: User}) {
+
+function FieldError({ message }: { message?: string }) {
+  if (!message) return null;
+  return <p className="text-destructive text-sm">{message}</p>;
+}
+
+function normalizePhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  // только код страны / пустое — считаем, что телефон не указан
+  if (!digits || digits === "7") return null;
+  return `+${digits}`;
+}
+
+export function SignupForm({
+  editMode = false,
+  user,
+}: {
+  editMode: boolean;
+  user?: User;
+}) {
   const router = useRouter();
   const params = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const { data: session, update } = useSession()
-  const userRole = session?.user?.role
-  const adminEdit = userRole === "admin"
+  const { data: session, update } = useSession();
+  const userRole = session?.user?.role;
+  const adminEdit = userRole === "admin";
   const form = useForm<z.infer<typeof signUpSchema>>({
     resolver: zodResolver(signUpSchema),
     defaultValues: {
       email: user?.email ?? "",
-      password: user?.passwordHash ?? "",
-      confirmPassword: user?.passwordHash ?? "",
+      // в режиме редактирования пароль не меняется — подставляем валидный placeholder
+      password: editMode ? "Password1" : "",
+      confirmPassword: editMode ? "Password1" : "",
       name: user?.name ?? "",
       surname: user?.surname ?? "",
       patronymic: user?.patronymic ?? null,
-      phone: null,
-      userDetails: user?.userDetails as UserDetails | null,
+      phone: user?.phone ?? null,
+      userDetails: (user?.userDetails as UserDetails | null) ?? null,
       role: user?.role ?? "student",
     },
   });
@@ -48,42 +76,45 @@ export function SignupForm({editMode = false, user}: {editMode: boolean, user?: 
     setIsLoading(true);
     setError(null);
     try {
-      const result = editMode ? await updateUserAction({
-        id: user?.id ?? 0,
-        email: values.email,
-        name: values.name,
-        surname: values.surname,
-        patronymic: values.patronymic,
-        phone: values.phone,
-        userDetails: values.userDetails as UserDetails | undefined,
-        role: values.role as "student" | "teacher" | "admin",
-      }) : await signUpAction(values);
+      const result = editMode
+        ? await updateUserAction({
+            id: user?.id ?? 0,
+            email: values.email,
+            name: values.name,
+            surname: values.surname,
+            patronymic: values.patronymic,
+            phone: values.phone,
+            userDetails: values.userDetails as UserDetails | undefined,
+            role: values.role as "student" | "teacher" | "admin",
+          })
+        : await signUpAction(values);
       if (!result.ok) {
         setError(result.error);
         return;
       }
-      if (editMode) {
-        toast.add({
-          description: "Пользователь успешно обновлен",
-          type: "success",
-        });
-      } else {
-        toast.add({
-          description: "Пользователь успешно зарегистрирован",
-          type: "success",
-        });
-      }
+      toast.add({
+        description: editMode
+          ? "Пользователь успешно обновлен"
+          : "Пользователь успешно зарегистрирован",
+        type: "success",
+      });
       if (!editMode) {
         await update();
         router.push(params.get("next") ?? "/");
         router.refresh();
       }
     } catch {
-      setError("Не удалось зарегистрироваться");
+      setError(
+        editMode
+          ? "Не удалось сохранить изменения"
+          : "Не удалось зарегистрироваться",
+      );
     } finally {
       setIsLoading(false);
     }
   }
+
+  const errors = form.formState.errors;
 
   return (
     <>
@@ -95,13 +126,20 @@ export function SignupForm({editMode = false, user}: {editMode: boolean, user?: 
       <form
         className="flex flex-col gap-4 w-full"
         onSubmit={form.handleSubmit(onSubmit)}
+        noValidate
       >
         <FieldGroup className="grid sm:grid-cols-2 gap-4">
           <Field>
             <FieldLabel htmlFor="name">
               Имя <span className="text-destructive">*</span>
             </FieldLabel>
-            <Input id="name" type="text" autoComplete="given-name" {...form.register("name")} />
+            <Input
+              id="name"
+              type="text"
+              autoComplete="given-name"
+              {...form.register("name")}
+            />
+            <FieldError message={errors.name?.message} />
           </Field>
           <Field>
             <FieldLabel htmlFor="surname">
@@ -113,6 +151,7 @@ export function SignupForm({editMode = false, user}: {editMode: boolean, user?: 
               autoComplete="family-name"
               {...form.register("surname")}
             />
+            <FieldError message={errors.surname?.message} />
           </Field>
           <Field>
             <FieldLabel htmlFor="patronymic">Отчество</FieldLabel>
@@ -122,6 +161,7 @@ export function SignupForm({editMode = false, user}: {editMode: boolean, user?: 
               autoComplete="additional-name"
               {...form.register("patronymic")}
             />
+            <FieldError message={errors.patronymic?.message} />
           </Field>
           <Field>
             <FieldLabel htmlFor="phone">Телефон</FieldLabel>
@@ -136,12 +176,11 @@ export function SignupForm({editMode = false, user}: {editMode: boolean, user?: 
                   inputMode="tel"
                   placeholder="+7 (___) ___-__-__"
                   mask="+{7} (000) 000-00-00"
-                  lazy={false}
+                  lazy
                   unmask
-                  // в форме храним +79991234567 (как в signUpSchema)
                   value={field.value?.replace(/^\+/, "") ?? ""}
                   onAccept={(value: string) => {
-                    field.onChange(value ? `+${value}` : null);
+                    field.onChange(normalizePhone(value));
                   }}
                   onBlur={field.onBlur}
                   name={field.name}
@@ -149,84 +188,115 @@ export function SignupForm({editMode = false, user}: {editMode: boolean, user?: 
                 />
               )}
             />
-            {form.formState.errors.phone && (
-              <p className="text-destructive text-sm">{form.formState.errors.phone.message}</p>
-            )}
+            <FieldError message={errors.phone?.message} />
           </Field>
           <Field>
             <FieldLabel htmlFor="email">
               Email <span className="text-destructive">*</span>
             </FieldLabel>
-            <Input disabled={editMode} id="email" type="email" autoComplete="email" {...form.register("email")} />
+            <Input
+              disabled={editMode}
+              id="email"
+              type="email"
+              autoComplete="email"
+              {...form.register("email")}
+            />
+            <FieldError message={errors.email?.message} />
           </Field>
           {!editMode && (
             <>
-          <Field>
-            <FieldLabel htmlFor="password">
-              Пароль <span className="text-destructive">*</span>
-            </FieldLabel>
-            <Input
-              id="password"
-              type="password"
-              autoComplete="new-password"
-              {...form.register("password")}
-            />
-          </Field>
-          <Field>
-            <FieldLabel htmlFor="confirmPassword">
-              Подтверждение пароля <span className="text-destructive">*</span>
-            </FieldLabel>
-            <Input
-              id="confirmPassword"
-              type="password"
-              autoComplete="new-password"
-              {...form.register("confirmPassword")}
-            />
-          </Field>
-          </>
+              <Field>
+                <FieldLabel htmlFor="password">
+                  Пароль <span className="text-destructive">*</span>
+                </FieldLabel>
+                <Input
+                  id="password"
+                  type="password"
+                  autoComplete="new-password"
+                  {...form.register("password")}
+                />
+                <FieldError message={errors.password?.message} />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="confirmPassword">
+                  Подтверждение пароля <span className="text-destructive">*</span>
+                </FieldLabel>
+                <Input
+                  id="confirmPassword"
+                  type="password"
+                  autoComplete="new-password"
+                  {...form.register("confirmPassword")}
+                />
+                <FieldError message={errors.confirmPassword?.message} />
+              </Field>
+            </>
           )}
           {editMode && adminEdit && (
             <>
-            <Field>
-              <FieldLabel htmlFor="role">Роль</FieldLabel>
-              <Select id="role" value={form.getValues("role")} onValueChange={(value) => form.setValue("role", value as "student" | "teacher" | "admin")}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите роль" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="student">Студент</SelectItem>
-                  <SelectItem value="teacher">Преподаватель</SelectItem>
-                  <SelectItem value="admin">Администратор</SelectItem>  
-                </SelectContent>
-              </Select>
-            </Field>
-            <h2>Доп. информация</h2>
-            <Field>
-              <FieldLabel htmlFor="position">Должность</FieldLabel>
-              <Input id="position" type="text" {...form.register("userDetails.position")} />
-            </Field>
-            <Field>
-              <FieldLabel htmlFor="achievements">Достижения</FieldLabel>
-              <Input id="achievements" type="text" {...form.register("userDetails.achievements")} />
-            </Field>
+              <Field>
+                <FieldLabel htmlFor="role">Роль</FieldLabel>
+                <Select
+                  value={form.watch("role")}
+                  onValueChange={(value) =>
+                    form.setValue(
+                      "role",
+                      value as "student" | "teacher" | "admin",
+                    )
+                  }
+                >
+                  <SelectTrigger id="role">
+                    <SelectValue placeholder="Выберите роль" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="student">Студент</SelectItem>
+                    <SelectItem value="teacher">Преподаватель</SelectItem>
+                    <SelectItem value="admin">Администратор</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Field>
+              <h2>Доп. информация</h2>
+              <Field>
+                <FieldLabel htmlFor="position">Должность</FieldLabel>
+                <Input
+                  id="position"
+                  type="text"
+                  {...form.register("userDetails.position")}
+                />
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="achievements">Достижения</FieldLabel>
+                <Input
+                  id="achievements"
+                  type="text"
+                  {...form.register("userDetails.achievements")}
+                />
+              </Field>
             </>
           )}
         </FieldGroup>
-        {editMode? (
+        {editMode ? (
           <div className="flex flex-col gap-2 align-center flex-wrap">
             <Button disabled={isLoading} className="min-h-10" type="submit">
-              Сохранить {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+              Сохранить{" "}
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
             </Button>
           </div>
         ) : (
-        <div className="flex flex-col gap-2 align-center flex-wrap">
-          <Button disabled={isLoading} className="min-h-10" type="submit">
-            Зарегистрироваться {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-          </Button>
-          <Link href="/login" className="text-sm text-gray-500">
-            Уже есть аккаунт? <span className="text-gray-800 dark:text-gray-200 text-lg">Войти</span>
-          </Link>
-        </div>
+          <div className="flex flex-col gap-2 align-center flex-wrap">
+            <Button disabled={isLoading} className="min-h-10" type="submit">
+              Зарегистрироваться{" "}
+              {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+            </Button>
+            <Link
+              href="/login"
+              className="cursor-pointer flex items-center gap-2 text-sm text-gray-500"
+            >
+              Уже есть аккаунт?{" "}
+              <span className="text-gray-800 dark:text-gray-200 text-lg">
+                Войти
+              </span>
+            </Link>
+          </div>
         )}
       </form>
     </>

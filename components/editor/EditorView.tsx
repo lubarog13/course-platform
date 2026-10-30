@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import type { CourseFullDto } from "@/app/lib/courses";
 import CourseEdit from "../courses/CourseEdit";
 import ErrorView from "../layout/error-view";
+import { COURSE_DEFAULT_DESCRIPTION } from "@/app/lib/consts";
 
 function createDefaultLesson(overrides?: Partial<LessonFullDto>): LessonFullDto {
   return {
@@ -45,7 +46,7 @@ function createDefaultCourse(): CourseFullDto {
   return {
     id: -1,
     name: "",
-    description: "",
+    description: COURSE_DEFAULT_DESCRIPTION,
     tags: [],
     categoryId: null,
     deadlineDays: null,

@@ -47,6 +47,40 @@ export type EnrollmentDto =  UserCourse & {
   userPatronymic: string | null;
 };
 
+const COURSE_STUDENT_STATUSES = [
+  "enrolled",
+  "in_progress",
+  "completed",
+] as const;
+
+export type CourseStudentProgressItem = {
+  userId: number;
+  enrollmentId: number;
+  user: {
+    id: number;
+    name: string;
+    surname: string;
+    patronymic: string | null;
+    email: string;
+  };
+  status: EnrollmentStatus;
+  progress: number;
+  completedLessons: number;
+  totalLessons: number;
+  earnedPoints: number;
+  maxPoints: number;
+  deadline: Date | null;
+};
+
+export type CourseStudentProgressPage = {
+  items: CourseStudentProgressItem[];
+  total: number;
+  limit: number;
+  offset: number;
+  totalLessons: number;
+  maxPoints: number;
+};
+
 function asOptionalDate(value: unknown, field: string): Date | null | undefined {
   if (value === undefined) return undefined;
   if (value === null) return null;
@@ -198,6 +232,134 @@ export async function isCourseStaff(courseId: number, userId: number, role: Role
     select: { id: true },
   });
   return instructor != null;
+}
+
+function parseCourseKey(id: string): { id: number } | { slug: string } {
+  if (/^\d+$/.test(id)) return { id: Number(id) };
+  return { slug: id };
+}
+
+/** Студенты курса с общим прогрессом и дедлайном (для преподавателя). */
+export async function listCourseStudentsForTeacher(
+  courseKey: string,
+  actor: { id: number; role: Role },
+  limit = 20,
+  offset = 0,
+): Promise<CourseStudentProgressPage> {
+  const pageLimit = Math.min(100, Math.max(1, limit));
+  const pageOffset = Math.max(0, offset);
+
+  const course = await prisma.course.findFirst({
+    where: { deletedAt: null, ...parseCourseKey(courseKey) },
+    select: { id: true },
+  });
+  if (!course) {
+    throw new Error("Курс не найден", { cause: "not_found" });
+  }
+
+  const staff = await isCourseStaff(course.id, actor.id, actor.role);
+  if (!staff) {
+    throw new Error("Нет доступа к списку студентов", { cause: "no_access" });
+  }
+
+  const lessonWhere = {
+    deletedAt: null,
+    coursePart: { courseId: course.id, deletedAt: null },
+  } as const;
+
+  const [totals, total, enrollments] = await Promise.all([
+    prisma.lesson.aggregate({
+      where: lessonWhere,
+      _count: { _all: true },
+      _sum: { points: true },
+    }),
+    prisma.userCourse.count({
+      where: {
+        courseId: course.id,
+        status: { in: [...COURSE_STUDENT_STATUSES] },
+      },
+    }),
+    prisma.userCourse.findMany({
+      where: {
+        courseId: course.id,
+        status: { in: [...COURSE_STUDENT_STATUSES] },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            surname: true,
+            patronymic: true,
+            email: true,
+          },
+        },
+      },
+      orderBy: [{ user: { surname: "asc" } }, { user: { name: "asc" } }],
+      skip: pageOffset,
+      take: pageLimit,
+    }),
+  ]);
+
+  const totalLessons = totals._count._all;
+  const maxPoints = totals._sum.points ?? 0;
+  const userIds = enrollments.map((row) => row.userId);
+
+  const [completedByUser, pointsByUser] = userIds.length
+    ? await Promise.all([
+        prisma.userLesson.groupBy({
+          by: ["userId"],
+          where: {
+            userId: { in: userIds },
+            completed: true,
+            lesson: lessonWhere,
+          },
+          _count: { _all: true },
+        }),
+        prisma.userLesson.groupBy({
+          by: ["userId"],
+          where: {
+            userId: { in: userIds },
+            lesson: lessonWhere,
+          },
+          _sum: { points: true },
+        }),
+      ])
+    : [[], []];
+
+  const completedMap = new Map(
+    completedByUser.map((row) => [row.userId, row._count._all]),
+  );
+  const pointsMap = new Map(
+    pointsByUser.map((row) => [row.userId, row._sum.points ?? 0]),
+  );
+
+  return {
+    items: enrollments.map((row) => {
+      const completedLessons = completedMap.get(row.userId) ?? 0;
+      const computedProgress =
+        totalLessons > 0
+          ? Math.round((completedLessons / totalLessons) * 100)
+          : 0;
+      return {
+        userId: row.userId,
+        enrollmentId: row.id,
+        user: row.user,
+        status: row.status,
+        progress: Math.max(row.progress, computedProgress),
+        completedLessons,
+        totalLessons,
+        earnedPoints: pointsMap.get(row.userId) ?? 0,
+        maxPoints,
+        deadline: row.deadline,
+      };
+    }),
+    total,
+    limit: pageLimit,
+    offset: pageOffset,
+    totalLessons,
+    maxPoints,
+  };
 }
 
 /** Создаёт UserCoursePart / UserLesson, если их ещё нет (при approve → enrolled). */
