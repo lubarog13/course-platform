@@ -10,7 +10,7 @@ import {
   parseCreateCommentBody,
 } from "@/app/lib/comments";
 import type { Role } from "@prisma/client";
-import { createNotification } from "@/app/lib/notifications";
+import { createNotification, sendEmailNotification } from "@/app/lib/notifications";
 import { NotificationType, NotificationEntityType } from "@prisma/client";
 import { getInstructors } from "@/app/lib/comments";
 
@@ -91,6 +91,16 @@ export async function POST(request: NextRequest) {
       const parentComment = await findComment(comment.parentId, 50, 0);
       if (parentComment) {
         await createNotification(parentComment.userId, NotificationType.lesson_comment, "Ответ на комментарий", "Пользователь " + session.user.name + " ответил на комментарий ", NotificationEntityType.lesson, comment.lessonId);
+        try {
+          await sendEmailNotification(parentComment.userId, {
+            title: "Ответ на комментарий",
+            body: "Пользователь " + session.user.name + " ответил на комментарий ",
+            url: '/course/' + comment.courseSlug + '/learn?lessonId=' + comment.lessonId,
+            label: 'Открыть урок'
+          });
+        } catch (error) {
+          console.error("Error sending email notification:", error);
+        }
       }
     }
     else {
@@ -98,6 +108,16 @@ export async function POST(request: NextRequest) {
       if (instructors && instructors.length > 0) {
         for (const instructorId of instructors) {
           await createNotification(instructorId, NotificationType.lesson_comment, "Новый комментарий", "Пользователь " + session.user.name + " оставил комментарий на урок " + comment.lessonId, NotificationEntityType.lesson, comment.lessonId);
+          try {
+            await sendEmailNotification(instructorId, {
+              title: "Новый комментарий",
+              body: "Пользователь " + session.user.name + " оставил комментарий на урок " + comment.lessonId,
+              url: '/course/' + comment.courseSlug + '/learn?lessonId=' + comment.lessonId,
+              label: 'Открыть урок'
+            });
+          } catch (error) {
+            console.error("Error sending email notification:", error);
+          }
         }
       }
     }

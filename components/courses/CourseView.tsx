@@ -174,7 +174,7 @@ export default function CourseView() {
               }}
             />)
              : (
-                <LessonProgress courseParts={courseParts} courseSlug={slug} canEdit={canEdit} />
+                <LessonProgress courseParts={courseParts} courseSlug={slug} canEdit={canEdit} onSelectLesson={selectLesson} />
             )}
             </div>
     </div>;

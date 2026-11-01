@@ -7,7 +7,7 @@ import {
   requireObject,
 } from "@/app/lib/api";
 import { prisma } from "@/app/lib/prisma";
-import { createNotification } from "./notifications";
+import { createNotification, sendEmailNotification } from "./notifications";
 import { NotificationType } from "./models";
 
 const REVIEW_STATUSES = new Set<EnrollmentStatus>([
@@ -89,7 +89,7 @@ export async function saveCourseReview(
 ): Promise<CourseReview> {
   const course = await prisma.course.findFirst({
     where: { id: data.courseId, deletedAt: null },
-    select: { id: true, name: true },
+    select: { id: true, name: true, slug: true },
   });
   if (!course) {
     throw new Error("Курс не найден", { cause: "not_found" });
@@ -148,6 +148,16 @@ export async function saveCourseReview(
         "course",
         course.id,
       );
+      try {
+        await sendEmailNotification(adminUser.id, {
+          title: "Новый отзыв",
+          body: "Пользователь оставил отзыв на курс " + course.name,
+          url: '/course/' + course.slug,
+          label: 'Открыть курс'
+        });
+      } catch (error) {
+        console.error("Error sending email notification:", error);
+      }
     }
 
     return review;

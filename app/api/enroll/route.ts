@@ -1,7 +1,7 @@
 import { prisma } from "@/app/lib/prisma";
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
-import { createNotification } from "@/app/lib/notifications";
+import { createNotification, sendEmailNotification } from "@/app/lib/notifications";
 import { NotificationType, NotificationEntityType, UserCourse } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { jsonError } from "@/app/lib/courses";
@@ -105,6 +105,16 @@ export async function POST(request: NextRequest) {
         if (courseInstructors) {
           for (const courseInstructor of courseInstructors) {
             const notification = await createNotification(courseInstructor.userId, NotificationType.course_enrollment_request, "Запрос на запись на курс", "Пользователь " + user.name + " " + user.surname + " " + user.patronymic + " запросил запись на курс " + course.name, NotificationEntityType.course, courseId);
+            try {
+              await sendEmailNotification(courseInstructor.userId, {
+                title: "Запрос на запись на курс",
+                body: "Пользователь " + user.name + " " + user.surname + " " + user.patronymic + " запросил запись на курс " + course.name,
+                url: '/user/enrollments',
+                label: 'Открыть список записей'
+              });
+            } catch (error) {
+              console.error("Error sending email notification:", error);
+            }
             if (notification===null) {
               return NextResponse.json(
                 { error: "Ошибка при создании уведомления" },

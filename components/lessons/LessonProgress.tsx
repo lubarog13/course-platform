@@ -8,10 +8,12 @@ export default function LessonProgress({
   courseParts,
   courseSlug,
   canEdit,
+  onSelectLesson,
 }: {
   courseParts: CoursePartDto[];
   courseSlug: string;
   canEdit: boolean;
+  onSelectLesson?: (lessonId: number) => void;
 }) {
   return (
     <div className="p-8 py-4">
@@ -19,7 +21,7 @@ export default function LessonProgress({
       {canEdit ? (
         <StudentPointsTable courseSlug={courseSlug} className="mt-4" />
       ) : (
-        <PointsTable courseParts={courseParts} className="mt-4" />
+        <PointsTable courseParts={courseParts} className="mt-4" onSelectLesson={onSelectLesson} />
       )}
     </div>
   );

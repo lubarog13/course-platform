@@ -81,9 +81,11 @@ function StatusCell({ row }: { row: PointsRow }) {
 export default function PointsTable({
   courseParts,
   className,
+  onSelectLesson,
 }: {
   courseParts: CoursePartDto[];
   className?: string;
+  onSelectLesson?: (lessonId: number) => void;
 }) {
   const rows = buildRows(courseParts);
 
@@ -108,7 +110,7 @@ export default function PointsTable({
         </TableHeader>
         <TableBody>
           {rows.map((row) => (
-            <TableRow key={row.id}>
+            <TableRow key={row.id} onClick={() => onSelectLesson?.(row.id)} className="cursor-pointer hover:bg-muted">
               <TableCell className="max-w-[220px] truncate whitespace-normal font-medium">
                 {row.name}
               </TableCell>

@@ -11,7 +11,7 @@ import {
   parseOptionalPeerId,
 } from "@/app/lib/messages";
 import { auth } from "@/auth";
-import { createNotification } from "@/app/lib/notifications";
+import { createNotification, sendEmailNotification } from "@/app/lib/notifications";
 import { NotificationType } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
@@ -130,6 +130,16 @@ export async function POST(request: NextRequest) {
     
     if (message.receiverId) {
       await createNotification(message.receiverId, NotificationType.new_message, "Новое сообщение", "Пользователь " + session.user.name + " отправил вам сообщение","message", message.id);
+      try {
+        await sendEmailNotification(message.receiverId, {
+          title: "Новое сообщение",
+          body: "Пользователь " + session.user.name + " отправил вам сообщение",
+          url: '/user/messages?receiverId=' + session.user.id,
+          label: 'Открыть чат'
+        });
+      } catch (error) {
+        console.error("Error sending email notification:", error);
+      }
     }
     return NextResponse.json(message, { status: 201 });
   } catch (error) {

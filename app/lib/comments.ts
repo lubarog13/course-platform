@@ -28,6 +28,7 @@ export type CommentReply = {
 };
 
 export type CommentDto = Omit<CommentReply, "repliesCount"> & {
+  courseSlug: string;
   replies: CommentReply[];
   repliesCount: number;
 };
@@ -85,6 +86,7 @@ function serializeReply(
 function serializeComment(
   comment: LessonComment & {
     user: CommentUser;
+    lesson: { coursePart: { course: { slug: string } } };
     replies: (LessonComment & { user: CommentUser })[];
     repliesCount: number;
   },
@@ -93,6 +95,7 @@ function serializeComment(
     ...serializeReply(comment),
     replies: comment.replies.map(serializeReply),
     repliesCount: comment.repliesCount,
+    courseSlug: comment.lesson?.coursePart?.course?.slug ?? '',
   };
 }
 
@@ -198,6 +201,7 @@ export async function listComments(
             user: { select: commentUserSelect },
           },
         },
+        lesson: { select: { coursePart: { select: { course: { select: { slug: true } } } } } },
         _count: {
           select: { replies: true },
         },
@@ -207,7 +211,7 @@ export async function listComments(
   ]);
 
   return {
-    items: rows.map((row) => serializeComment({ ...row, repliesCount: row._count.replies })),
+    items: rows.map((row) => serializeComment({ ...row, repliesCount: row._count.replies, lesson: { coursePart: { course: { slug: row.lesson.coursePart.course.slug } } } })),
     total,
     page: Math.floor(offsetNum / limitNum) + 1,
     limit: limitNum,
@@ -277,6 +281,7 @@ export async function createComment(
     },
     include: {
       user: { select: commentUserSelect },
+      lesson: { select: { coursePart: { select: { course: { select: { slug: true } } } } } },
       replies: {
         where: { deletedAt: null },
         include: { user: { select: commentUserSelect } },
@@ -287,7 +292,7 @@ export async function createComment(
     },
   });
 
-  return serializeComment({ ...created, repliesCount: created.replies.length ?? 0 });
+  return serializeComment({ ...created, repliesCount: created.replies.length ?? 0, lesson: { coursePart: { course: { slug: created.lesson.coursePart.course.slug } } } });
 }
 
 export async function findComment(id: number, repliesLimit: number, repliesOffset: number) {
@@ -349,6 +354,7 @@ export async function updateComment(
         orderBy: { createdAt: "asc" },
         include: { user: { select: commentUserSelect } },
       },
+      lesson: { select: { coursePart: { select: { course: { select: { slug: true } } } } } },
     },
   });
 
