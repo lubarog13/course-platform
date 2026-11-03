@@ -1,8 +1,11 @@
 import { NotificationType, NotificationEntityType, Notification } from "@prisma/client";
 import { prisma } from "./prisma";
 import { Resend } from 'resend';
-import NotificationEmail from "@/emails/notification";
-import { render } from "@react-email/components";
+import {
+  NotificationEmail,
+  type NotificationEmailProps,
+} from "@/emails/notification";
+import { render, pretty } from "react-email";
 
 const resend = new Resend(process.env.RESEND_API_KEY);
 export type NotificationFull = Notification & {
@@ -203,18 +206,24 @@ type EmailNotificationPayload = {
 export async function sendEmailNotification(userId: number, payload: EmailNotificationPayload): Promise<void> {
   const user = await prisma.user.findUnique({
     where: { id: userId },
+    include: {
+      agreement: true,
+    },
   });
   if (!user) {
     throw new Error('Пользователь не найден', { cause: 'user_not_found' });
   }
-  const variables = {
+  if (!user.agreement?.accept_email_notifications) {
+    return;
+  }
+  const variables: NotificationEmailProps = {
     title: payload.title,
     recipientName: user.name,
     body: payload.body,
     actionUrl: payload.url,
     actionLabel: payload.label,
   };
-  const html =  await render(NotificationEmail, variables);
+  const html = await pretty(await render(<NotificationEmail {...variables} />));
   resend.emails.send({
     from: process.env.EMAIL_FROM as string,
     to: user.email,

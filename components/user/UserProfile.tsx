@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation"
 import Loading from "../layout/loading";
 import NotFound from "../layout/not-found";
 import { SignupForm } from "../auth/SignupForm"
+import { UserWithAgreement } from "@/app/lib/models"
 
 export function UserProfile() {
     const { data: session, status } = useSession()
@@ -14,11 +15,12 @@ export function UserProfile() {
     const [loading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const router = useRouter()
+    const [user, setUser] = useState<UserWithAgreement | null>(null);
+
     if (status === "unauthenticated") {
         router.push("/login")
         return null
     }
-    const [user, setUser] = useState<User | null>(null);
     const fetchUser = async (signal: AbortSignal) => {
         fetch(`/api/user/${sessionUser?.id}`, {
             signal: signal,

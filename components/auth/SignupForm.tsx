@@ -14,7 +14,7 @@ import { Loader2 } from "lucide-react";
 import { IMaskMixin } from "react-imask";
 import Link from "next/link";
 import { User } from "@prisma/client";
-import { UserDetails } from "@/app/lib/models";
+import { UserDetails, UserWithAgreement } from "@/app/lib/models";
 import { useSession } from "next-auth/react";
 import { toast } from "../ui/toast";
 import {
@@ -24,6 +24,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Switch } from "../ui/switch";
+
 
 /** IMask даёт inputRef — прокидываем в наш Input как ref */
 const PhoneInput = IMaskMixin(({ inputRef, ...props }) => (
@@ -47,13 +49,13 @@ export function SignupForm({
   user,
 }: {
   editMode: boolean;
-  user?: User;
+  user?: UserWithAgreement;
 }) {
   const router = useRouter();
   const params = useSearchParams();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const { data: session, update } = useSession();
+  const { data: session } = useSession();
   const userRole = session?.user?.role;
   const adminEdit = userRole === "admin";
   const form = useForm<z.infer<typeof signUpSchema>>({
@@ -69,6 +71,8 @@ export function SignupForm({
       phone: user?.phone ?? null,
       userDetails: (user?.userDetails as UserDetails | null) ?? null,
       role: user?.role ?? "student",
+      acceptEmailNotifications: user?.agreement.accept_email_notifications ?? true,
+      acceptEmailPromotions: user?.agreement.accept_email_promotions ?? true,
     },
   });
 
@@ -86,6 +90,8 @@ export function SignupForm({
             phone: values.phone,
             userDetails: values.userDetails as UserDetails | undefined,
             role: values.role as "student" | "teacher" | "admin",
+            acceptEmailNotifications: values.acceptEmailNotifications,
+            acceptEmailPromotions: values.acceptEmailPromotions,
           })
         : await signUpAction(values);
       if (!result.ok) {
@@ -95,12 +101,11 @@ export function SignupForm({
       toast.add({
         description: editMode
           ? "Пользователь успешно обновлен"
-          : "Пользователь успешно зарегистрирован",
+          : "Аккаунт создан. Подтвердите email — без этого вход недоступен.",
         type: "success",
       });
       if (!editMode) {
-        await update();
-        router.push(params.get("next") ?? "/");
+        router.push("/login?registered=1");
         router.refresh();
       }
     } catch {
@@ -231,6 +236,30 @@ export function SignupForm({
               </Field>
             </>
           )}
+          <Field className="sm:col-span-2 flex items-center gap-2 flex-row-reverse">
+                <FieldLabel htmlFor="acceptEmailNotifications">
+                  Я согласен на получение email уведомлений
+                </FieldLabel>
+                  <Switch
+                  id="acceptEmailNotifications"
+                  checked={form.watch("acceptEmailNotifications")}
+                  onCheckedChange={(checked) =>
+                    form.setValue("acceptEmailNotifications", checked)
+                  }
+                />
+              </Field>
+              <Field className="sm:col-span-2 flex items-center gap-2 flex-row-reverse">
+                <FieldLabel htmlFor="acceptEmailPromotions">
+                  Я согласен на получение рассылки с новостями платформы
+                </FieldLabel>
+                <Switch
+                  id="acceptEmailPromotions"
+                  checked={form.watch("acceptEmailPromotions")}
+                  onCheckedChange={(checked) =>
+                    form.setValue("acceptEmailPromotions", checked)
+                  }
+                />
+              </Field>
           {editMode && adminEdit && (
             <>
               <Field>

@@ -5,11 +5,11 @@ export type NotificationEmailProps = {
   recipientName: string;
   title: string;
   body: string;
-  actionUrl: string;
+  actionUrl?: string;
   actionLabel?: string;
 };
 
-export default function NotificationEmail({
+export function NotificationEmail({
   recipientName,
   title,
   body,
@@ -58,4 +58,4 @@ NotificationEmail.PreviewProps = {
   actionLabel: "Открыть курс",
 } satisfies NotificationEmailProps;
 
-export { NotificationEmail };
+export default NotificationEmail;

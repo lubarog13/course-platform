@@ -28,6 +28,8 @@ export const signUpSchema = object({
   surname: z.string({error: "Фамилия не может быть пустым"}).min(1, "Фамилия не может быть пустым"),
   patronymic: z.preprocess(emptyToNull, z.string().nullable()),
   phone: z.preprocess(phoneToNull, z.string().nullable()),
+  acceptEmailNotifications: z.boolean().default(false),
+  acceptEmailPromotions: z.boolean().default(false),
   userDetails: z.preprocess(
     emptyToNull,
     object({

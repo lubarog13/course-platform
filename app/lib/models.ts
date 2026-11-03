@@ -6,7 +6,7 @@
  * Типы моделей реэкспортируются из сгенерированного Prisma Client.
  */
 
-import type { CourseInstructor, User } from "@prisma/client";
+import type { Agreement, CourseInstructor, User } from "@prisma/client";
 
 export const Role = {
   student: "student",
@@ -114,6 +114,11 @@ export type NotificationEntityType =
 export type UserDetails = {
   position?: string;
   achievements?: string[];
+};
+
+
+export type UserWithAgreement = User & {
+  agreement: Agreement;
 };
 
 /** Преподаватель курса: запись CourseInstructor + пользователь */

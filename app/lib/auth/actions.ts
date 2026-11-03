@@ -6,7 +6,8 @@ import { signInSchema } from "@/app/lib/auth/form";
 import { Prisma, User } from "@prisma/client";
 import { prisma } from "@/app/lib/prisma";
 import { UserDetails } from "@/app/lib/models";
-import { hashPassword } from "@/app/lib/auth/password";
+import { hashPassword, verifyPassword } from "@/app/lib/auth/password";
+import { sendEmailVerification } from "@/app/lib/auth/email-verification";
 export type SignUpParams = {
   email: string;
   password: string;
@@ -14,6 +15,8 @@ export type SignUpParams = {
   surname: string;
   patronymic: string | null;
   phone: string | null;
+  acceptEmailNotifications: boolean;
+  acceptEmailPromotions: boolean;
 };
 
 export type UpdateUserParams = {
@@ -25,15 +28,41 @@ export type UpdateUserParams = {
   phone: string | null;
   userDetails: UserDetails | undefined;
   role: "student" | "teacher" | "admin";
+  acceptEmailNotifications: boolean;
+  acceptEmailPromotions: boolean;
+};
+
+export type AgreementParams = {
+  userId: number;
+  acceptEmailNotifications: boolean;
+  acceptEmailPromotions: boolean;
 };
 
 export async function loginAction(input: {
   email: string;
   password: string;
-}): Promise<{ ok: true } | { ok: false; error: string }> {
+}): Promise<
+  | { ok: true }
+  | { ok: false; error: string; code?: "email_not_verified" }
+> {
   const parsed = signInSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false, error: "Неверный email или пароль" };
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { email: parsed.data.email, deletedAt: null },
+  });
+  if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
+    return { ok: false, error: "Неверный email или пароль" };
+  }
+  if (!user.emailVerifiedAt) {
+    return {
+      ok: false,
+      code: "email_not_verified",
+      error:
+        "Подтвердите email по ссылке из письма. Без этого вход недоступен.",
+    };
   }
 
   try {
@@ -80,11 +109,32 @@ export async function signUpAction(params: SignUpParams): Promise<{ ok: true } |
     const user = await prisma.user.create({
       data: userData as Prisma.UserCreateInput,
     });
-    await signIn("credentials", {
-      email: params.email,
-      password: params.password,
-      redirect: false,
+    await prisma.agreement.create({
+      data: {
+        userId: user.id,
+        accept_email_notifications: params.acceptEmailNotifications,
+        accept_email_promotions: params.acceptEmailPromotions,
+      },
     });
+
+    const emailResult = await sendEmailVerification({
+      id: user.id,
+      email: user.email,
+      name: user.name,
+    });
+    if (!emailResult.ok) {
+      console.error(
+        "Не удалось отправить письмо подтверждения:",
+        emailResult.error,
+      );
+      return {
+        ok: false,
+        error:
+          "Аккаунт создан, но письмо не отправилось. Войдите и запросите письмо снова.",
+      };
+    }
+
+    // Вход только после подтверждения почты
     return { ok: true };
   } catch (error) {
     if (error instanceof Prisma.PrismaClientKnownRequestError) {
@@ -98,12 +148,84 @@ export async function signUpAction(params: SignUpParams): Promise<{ ok: true } |
   }
 }
 
+/** Повторная отправка: email + пароль (сессии ещё нет). */
+export async function resendEmailVerificationAction(input: {
+  email: string;
+  password: string;
+}): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = signInSchema.safeParse(input);
+  if (!parsed.success) {
+    return { ok: false, error: "Неверный email или пароль" };
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { email: parsed.data.email, deletedAt: null },
+  });
+  if (!user || !verifyPassword(parsed.data.password, user.passwordHash)) {
+    return { ok: false, error: "Неверный email или пароль" };
+  }
+  if (user.emailVerifiedAt) {
+    return { ok: false, error: "Почта уже подтверждена — можно войти" };
+  }
+
+  return sendEmailVerification({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+  });
+}
+
 export async function updateUserAction(params: UpdateUserParams): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
+    type UserData = Omit<UpdateUserParams, "acceptEmailNotifications" | "acceptEmailPromotions">;
+    const userData: UserData = {
+      id: params.id,
+      email: params.email,
+      name: params.name,
+      surname: params.surname,
+      patronymic: params.patronymic,
+      phone: params.phone,
+      userDetails: params.userDetails,
+      role: params.role,
+    };
     const user = await prisma.user.update({
       where: { id: params.id },
-      data: params,
+      data: userData,
     });
+    await updateAgreementAction({
+      userId: user.id,
+      acceptEmailNotifications: params.acceptEmailNotifications,
+      acceptEmailPromotions: params.acceptEmailPromotions,
+    });
+    return { ok: true };
+  } catch (error) {
+    throw error;
+  }
+}
+
+export async function updateAgreementAction(params: AgreementParams): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    let agreement = await prisma.agreement.findUnique({
+      where: { userId: params.userId },
+    });
+    if (!agreement) {
+      agreement = await prisma.agreement.create({
+        data: {
+          userId: params.userId,
+          accept_email_notifications: params.acceptEmailNotifications,
+          accept_email_promotions: params.acceptEmailPromotions,
+        },
+      });
+    } else {
+      agreement = await prisma.agreement.update({
+        where: { userId: params.userId },
+        data: {
+          accept_email_notifications: params.acceptEmailNotifications,
+          accept_email_promotions: params.acceptEmailPromotions,
+          updatedAt: new Date(),
+        },
+      });
+    }
     return { ok: true };
   } catch (error) {
     throw error;

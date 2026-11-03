@@ -9,7 +9,11 @@ import { authConfig } from "./auth.config";
 import { signInSchema } from "@/app/lib/auth/form";
 
 class InvalidLoginError extends CredentialsSignin {
-  code = "Неверный логин или пароль";
+  code = "invalid_credentials";
+}
+
+class EmailNotVerifiedError extends CredentialsSignin {
+  code = "email_not_verified";
 }
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
@@ -37,6 +41,10 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           throw new InvalidLoginError();
         }
 
+        if (!user.emailVerifiedAt) {
+          throw new EmailNotVerifiedError();
+        }
+
         return {
           id: String(user.id),
           email: user.email,
@@ -52,7 +60,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   session: {
     strategy: "jwt",
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET ?? process.env.AUTH_SECRET,
   debug: process.env.NODE_ENV === "development",
   callbacks: {
     ...authConfig.callbacks,
@@ -60,12 +68,31 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       if (user) {
         token.id = user.id!;
         token.role = user.role;
+        token.emailVerified = true;
+        return token;
       }
+
+      // Сбрасываем сессии, выданные до жёсткой проверки почты
+      if (token.id && token.emailVerified !== true) {
+        const dbUser = await prisma.user.findFirst({
+          where: { id: Number(token.id), deletedAt: null },
+          select: { emailVerifiedAt: true, role: true },
+        });
+        if (!dbUser?.emailVerifiedAt) {
+          return {};
+        }
+        token.emailVerified = true;
+        token.role = dbUser.role;
+      }
+
       return token;
     },
     async session({ session, token }) {
+      if (!token.id) {
+        return session;
+      }
       if (session.user) {
-        session.user.id = String(token.id ?? "");
+        session.user.id = String(token.id);
         session.user.role = token.role as Role;
       }
       return session;

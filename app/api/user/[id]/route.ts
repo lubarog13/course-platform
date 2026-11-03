@@ -17,6 +17,9 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
         where: {
             id: Number(id),
         },
+        include: {
+            agreement: true,
+        },
     });
     if (!user) {
         return jsonError("Пользователь не найден", 404);

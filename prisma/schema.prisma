@@ -107,6 +107,7 @@ model User {
   sentMessages       Message[]               @relation("SentMessages")
   receivedMessages   Message[]               @relation("ReceivedMessages")
   notifications      Notification[]
+  agreement          Agreement?
 
   @@map("User")
 }
@@ -528,4 +529,18 @@ model Notification {
 
   @@index([userId, createdAt])
   @@map("Notification")
+}
+
+model Agreement {
+  id        Int       @id @default(autoincrement())
+  userId    Int       @map("user_id")
+  accept_email_notifications Boolean @default(false) @map("accept_email_notifications")
+  accept_email_promotions Boolean @default(false) @map("accept_email_promotions")
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId])
+  @@map("Agreement")
 }
