@@ -127,6 +127,7 @@ Table Course {
   tags varchar[] [note: 'Теги курса']
   duration_seconds integer [default: 0, note: 'Общая длительность курса в секундах']
   deadline_days integer [note: 'NULL = без дедлайна']
+  certificate_template varchar [note: 'Шаблон сертификата']
 
   checks {
     `created_at <= updated_at` [name: 'course_timestamps']

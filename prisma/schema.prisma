@@ -168,6 +168,7 @@ model Course {
   tags            String[]     @default([])
   durationSeconds Int          @default(0) @map("duration_seconds")
   deadlineDays    Int?         @map("deadline_days")
+  certificateTemplate String?  @map("certificate_template")
 
   coverFile          File?                   @relation("CourseCover", fields: [coverFileId], references: [id])
   category           Category?               @relation(fields: [categoryId], references: [id])

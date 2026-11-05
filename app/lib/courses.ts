@@ -8,6 +8,8 @@ import {
   CoursePart,
   UserCourse,
 } from "@prisma/client";
+import { readdirSync } from "node:fs";
+import path from "node:path";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
 import { CourseLevel, type Instructor } from "@/app/lib/models";
@@ -613,4 +615,9 @@ export function prismaErrorResponse(error: unknown) {
   }
   console.error(error);
   return jsonError("Внутренняя ошибка сервера", 500);
+}
+
+export function getCertificateTemplatesList(): string[] {
+  const dir = path.join(process.cwd(), "public", "images", "pdf_templates");
+  return readdirSync(dir).filter((name) => !name.startsWith("."));
 }

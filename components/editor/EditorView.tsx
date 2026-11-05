@@ -64,10 +64,11 @@ function createDefaultCourse(): CourseFullDto {
     rating: null,
     ratingCount: 0,
     courseParts: [],
+    certificateTemplate: null,
   };
 }
 
-export default function EditorView() {
+export default function EditorView({ certificateTemplates }: { certificateTemplates: string[] }) {
   const [lesson, setLesson] = useState<LessonFullDto | null>(null);
   const [course, setCourse] = useState<CourseFullDto | null>(null);
   const [loading, setLoading] = useState(true);
@@ -214,6 +215,7 @@ export default function EditorView() {
             }
           }}
           userId={userId}
+          certificateTemplates={certificateTemplates}
         />
       ) : (
         <NotFound text="Материал не найден" showHomeButton={true} />

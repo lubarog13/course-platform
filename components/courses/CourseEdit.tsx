@@ -87,7 +87,7 @@ function loadFilterTags(signal: AbortSignal): Promise<{ tags: TagOption[], categ
   });
 }
 
-export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEditProps) {
+export default function CourseEdit({ course, isNew, onSaved, userId, certificateTemplates }: CourseEditProps) {
     const editorRef = useRef<MDXEditorMethods>(null);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -128,7 +128,7 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
     const tagsValue = useWatch({ control, name: "tags" });
     const language = useWatch({ control, name: "language" });
     const description = useWatch({ control, name: "description" });
-
+    const certificateTemplate = useWatch({ control, name: "certificateTemplate" });
     const draftCourseIdRef = useRef<number>(course.id < 1 ? -1 : course.id);
     const draftTimerRef = useRef<number | null>(null);
     useEffect(() => {
@@ -197,6 +197,7 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
     if (!filename) return;
     setCoverUrl(`/api/uploads/${encodeURIComponent(filename)}`);
       }, [cover?.url]);
+
     useEffect(() => {
         if (!isDirty && !coursePartsChanged && !draftRestoredAt) return;
     
@@ -689,6 +690,32 @@ export default function CourseEdit({ course, isNew, onSaved, userId }: CourseEdi
           {(provided) => <InputSelectTrigger {...provided} />}
         </InputSelect>
         <FieldError errors={[errors.language]} />
+      </Field>
+      <Field data-invalid={!!errors.certificateTemplate || undefined}>
+        <FieldLabel htmlFor="certificateTemplate">Шаблон сертификата</FieldLabel>
+        <Select
+        value={certificateTemplate ?? ""}
+        items={certificateTemplates.map((template: string) => ({
+          value: template,
+          label: template,
+        }))}
+        onValueChange={(value) => {
+          setValue("certificateTemplate", value as string, {
+            shouldDirty: true,
+            shouldValidate: true,
+          });
+        }}
+        >
+          <SelectTrigger className="min-h-11">
+            <SelectValue placeholder="Выберите шаблон сертификата" />
+          </SelectTrigger>
+        </Select>
+        {certificateTemplate && (<div className="mt-2">
+          <div className="text-sm text-muted-foreground">
+            Пример шаблона сертификата:
+          </div>
+          <img src={`/images/pdf_templates/${certificateTemplate}.png`} alt={certificateTemplate} className="w-200 h-auto" />
+        </div>)}
       </Field>
  </div>
  <DragDropProvider

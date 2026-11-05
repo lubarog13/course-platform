@@ -39,6 +39,7 @@ const nullableNumber = z.preprocess((value) => {
     tags: z.array(z.string()).optional(),
     deadlineDays: nullableNumber,
     publishedAt: z.date().nullable(),
+    certificateTemplate: z.string().optional(),
   }).superRefine((data, ctx) => {
     if (data.deadlineDays != null && (Number.isNaN(data.deadlineDays) || data.deadlineDays < 0)) {
       ctx.addIssue({
@@ -84,6 +85,7 @@ const nullableNumber = z.preprocess((value) => {
       tags: course.tags,
       deadlineDays: course.deadlineDays,
       publishedAt: course.publishedAt ? new Date(course.publishedAt) : null,
+      certificateTemplate: course.certificateTemplate,
     };
   }
 
