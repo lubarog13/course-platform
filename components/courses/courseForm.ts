@@ -85,7 +85,7 @@ const nullableNumber = z.preprocess((value) => {
       tags: course.tags,
       deadlineDays: course.deadlineDays,
       publishedAt: course.publishedAt ? new Date(course.publishedAt) : null,
-      certificateTemplate: course.certificateTemplate,
+      certificateTemplate: course.certificateTemplate ?? undefined,
     };
   }
 

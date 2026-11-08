@@ -2,7 +2,7 @@
 import { CertificateDto } from "@/app/lib/certificate";
 import { Button } from "../ui/button";
 import { Item, ItemContent, ItemTitle, ItemDescription, ItemMedia, ItemActions, ItemFooter } from "../ui/item";
-import { Certificate as CertificateIcon, Loader2 } from 'lucide-react';
+import { FileBadge as CertificateIcon, Loader2 } from 'lucide-react';
 
 import { DownloadIcon } from "lucide-react";
 import { useState } from "react";
@@ -33,15 +33,15 @@ const {data: session} = useSession();
         method: "POST",
         body: JSON.stringify({
           courseId,
-          userId: session?.user?.id,
+          userId: Number(session?.user?.id),
         }),
       });
       const data = await response.json();
       if (!response.ok) {
         throw new Error(data.error);
       }
-      setCertificate(data.certificate);
-    const filename = typeof data.certificate?.file?.url === "string" ? data.certificate.url.split("/").pop() : null;
+      setCertificate(data);
+    const filename = typeof data?.file?.url === "string" ? data.file.url.split("/").pop() : null;
     if (!filename) {
       throw new Error("Не удалось получить имя файла");
     }
@@ -58,7 +58,7 @@ const {data: session} = useSession();
   {error && <p className="mb-3 text-destructive rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
             {error}
           </p>}
-  <Item className="w-full">
+  <Item variant="outline" className="w-full">
     <ItemMedia>
         <CertificateIcon className="size-4" />
     </ItemMedia>
@@ -72,7 +72,7 @@ const {data: session} = useSession();
         } {buttonText}</Button>
     </ItemActions>
     {certificateUrl && <ItemFooter>
-        <img src={certificateUrl} alt="Сертификат" className="w-[300px] max-w-full h-auto" />
+        <iframe src={certificateUrl}  className="w-full max-w-full h-auto" />
     </ItemFooter>}
   </Item>
   </>;

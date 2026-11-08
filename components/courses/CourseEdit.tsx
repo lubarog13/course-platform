@@ -36,6 +36,7 @@ type CourseEditProps = {
   isNew: boolean;
   onSaved: (course: CourseFullDto) => void;
   userId: number;
+  certificateTemplates: string[];
 };
 type TagOption = {
   tag: string;
@@ -87,7 +88,7 @@ function loadFilterTags(signal: AbortSignal): Promise<{ tags: TagOption[], categ
   });
 }
 
-export default function CourseEdit({ course, isNew, onSaved, userId, certificateTemplates }: CourseEditProps) {
+export default function CourseEdit({ course, isNew, onSaved, userId, certificateTemplates = [] }: CourseEditProps) {
     const editorRef = useRef<MDXEditorMethods>(null);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -693,12 +694,9 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
       </Field>
       <Field data-invalid={!!errors.certificateTemplate || undefined}>
         <FieldLabel htmlFor="certificateTemplate">Шаблон сертификата</FieldLabel>
+        {certificateTemplates.length > 0 ? (
         <Select
         value={certificateTemplate ?? ""}
-        items={certificateTemplates.map((template: string) => ({
-          value: template,
-          label: template,
-        }))}
         onValueChange={(value) => {
           setValue("certificateTemplate", value as string, {
             shouldDirty: true,
@@ -709,12 +707,24 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
           <SelectTrigger className="min-h-11">
             <SelectValue placeholder="Выберите шаблон сертификата" />
           </SelectTrigger>
+          <SelectContent>
+            {certificateTemplates.map((template: string) => (
+              <SelectItem key={template} value={template}>{template}</SelectItem>
+            ))}
+          </SelectContent>
         </Select>
+        ) : (
+          <div className="mt-2">
+            <div className="text-sm text-muted-foreground">
+              Шаблоны сертификатов не найдены
+            </div>
+          </div>
+        )}
         {certificateTemplate && (<div className="mt-2">
-          <div className="text-sm text-muted-foreground">
+          <div className="text-sm text-muted-foreground mb-2">
             Пример шаблона сертификата:
           </div>
-          <img src={`/images/pdf_templates/${certificateTemplate}.png`} alt={certificateTemplate} className="w-200 h-auto" />
+          <img src={`/images/pdf_templates/${certificateTemplate}`} alt={certificateTemplate} className="w-200 h-auto" />
         </div>)}
       </Field>
  </div>

@@ -76,6 +76,7 @@ Table User {
   created_at timestamptz [not null, default: `now()`]
   updated_at timestamptz [not null, default: `now()`]
   deleted_at timestamptz [note: 'Soft-delete; NULL = активен']
+  signature_id integer [ref: > File.id, note: 'Подпись пользователя']
 
   checks {
     `created_at <= updated_at` [name: 'user_timestamps']

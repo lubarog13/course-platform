@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { File as FileModel } from "@/app/lib/models";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-export default function FileUploader({ onUploaded, multiple = false, className = "" }: { onUploaded: (files: FileModel[]) => void, multiple?: boolean, className?: string }) {
+export default function FileUploader({ onUploaded, multiple = false, className = "", accept = undefined }: { onUploaded: (files: FileModel[]) => void, multiple?: boolean, className?: string, accept?: { [key: string]: string[] } }) {
     const [files, setFiles] = useState<File[]>([]);
     const [fileModels, setFileModels] = useState<FileModel[]>([]);
     const [allUploaded, setAllUploaded] = useState(false);
@@ -54,7 +54,7 @@ export default function FileUploader({ onUploaded, multiple = false, className =
 
     return (
         <div className="flex flex-col justify-center gap-4 w-full my-4" >
-        <Dropzone accept={{
+        <Dropzone accept={accept ?? {
             "image/*": [".png", ".jpg", ".jpeg", ".gif", ".webp"],
             "video/*": [".mp4", ".mov", ".avi", ".mkv", ".webm"],
             "audio/*": [".mp3", ".wav", ".ogg", ".m4a", ".aac"],

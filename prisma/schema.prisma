@@ -94,6 +94,8 @@ model User {
   updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   /// Soft-delete; NULL = активен
   deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
+  signatureId      Int?      @map("signature_id")
+  /// Подпись пользователя
 
   uploadedFiles      File[]
   instructedCourses  CourseInstructor[]
@@ -108,6 +110,8 @@ model User {
   receivedMessages   Message[]               @relation("ReceivedMessages")
   notifications      Notification[]
   agreement          Agreement?
+  signature        File?     @relation("UserSignature", fields: [signatureId], references: [id])
+
 
   @@map("User")
 }
@@ -127,6 +131,7 @@ model File {
   certificates       Certificate[]
   messageAttachments MessageAttachment[]
   userTestAnswers    UserTestAnswer[]     @relation("UserTestAnswerFile")
+  userSignatures     User[]               @relation("UserSignature")
 
   @@map("File")
 }

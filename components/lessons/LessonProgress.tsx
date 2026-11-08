@@ -19,7 +19,7 @@ export default function LessonProgress({
   return (
     <div className="p-8 py-4">
       <h2 className="text-xl mb-4 font-semibold">Прогресс курса</h2>
-      <CertificateBanner courseId={courseParts[0].courseId} bannerTitle="Сертификат" bannerDescription="Сертификат" buttonText="Скачать сертификат" />
+      <CertificateBanner courseId={courseParts[0].courseId} bannerTitle="Вы успешно прошли курс" cashed={true} bannerDescription="Получить сертификат о прохождении курса" buttonText="Скачать" />
       {canEdit ? (
         <StudentPointsTable courseSlug={courseSlug} className="mt-4" />
       ) : (

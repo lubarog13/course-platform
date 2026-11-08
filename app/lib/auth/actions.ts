@@ -30,6 +30,7 @@ export type UpdateUserParams = {
   role: "student" | "teacher" | "admin";
   acceptEmailNotifications: boolean;
   acceptEmailPromotions: boolean;
+  signatureId: number | null;
 };
 
 export type AgreementParams = {
@@ -187,6 +188,7 @@ export async function updateUserAction(params: UpdateUserParams): Promise<{ ok: 
       phone: params.phone,
       userDetails: params.userDetails,
       role: params.role,
+      signatureId: params.signatureId,
     };
     const user = await prisma.user.update({
       where: { id: params.id },

@@ -11,7 +11,7 @@ import { useRouter } from "next/navigation";
 import type { CourseFullDto } from "@/app/lib/courses";
 import CourseEdit from "../courses/CourseEdit";
 import ErrorView from "../layout/error-view";
-import { COURSE_DEFAULT_DESCRIPTION } from "@/app/lib/consts";
+import { COURSE_DEFAULT_DESCRIPTION } from "@/lib/consts";
 
 function createDefaultLesson(overrides?: Partial<LessonFullDto>): LessonFullDto {
   return {

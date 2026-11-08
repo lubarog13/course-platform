@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
         const certificate = await generateCertificate(courseId, userId);
         return NextResponse.json(certificate);
     } catch (error) {
+        console.error(error);
         if (error instanceof Error && error.cause === "not_found") {
             return jsonError("Курс или пользователь не найден", 400);
         }

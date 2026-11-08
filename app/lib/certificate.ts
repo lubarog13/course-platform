@@ -1,22 +1,20 @@
-import { execFile } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync } from "node:fs";
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { promisify } from "node:util";
 
 import fontkit from "@pdf-lib/fontkit";
 import { PDFDocument, rgb, type PDFFont, type PDFPage } from "pdf-lib";
+import sharp from "sharp";
 
 import { prisma } from "@/app/lib/prisma";
 import { getUploadsDir } from "@/app/lib/uploads";
 import { getCertificateTemplatesList } from "./courses";
 import { Certificate } from "@prisma/client";
-
-const execFileAsync = promisify(execFile);
+import { File as FileModel } from "@prisma/client";
 
 export type CertificateDto = Certificate & {
-    file: File;
+    file: FileModel;
 }
 
 const NAVY = rgb(0.106, 0.165, 0.29);
@@ -51,6 +49,10 @@ const FONT_CANDIDATES = {
   bold: [
     path.join(process.cwd(), "assets/fonts/NotoSerif-Bold.ttf"),
     "/usr/share/fonts/google-noto/NotoSerif-Bold.ttf",
+  ],
+  semibold: [
+    path.join(process.cwd(), "assets/fonts/NotoSerif-SemiBold.ttf"),
+    "/usr/share/fonts/google-noto/NotoSerif-SemiBold.ttf",
   ],
 };
 
@@ -96,6 +98,19 @@ function studentName(user: {
   return [user.surname, user.name, user.patronymic].filter(Boolean).join(" ");
 }
 
+async function resolveSignaturePath(signatureId: number | null) {
+  if (!signatureId) {
+    return SIGNATURE_SVG;
+  }
+  const signature = await prisma.file.findUnique({
+    where: { id: signatureId },
+  });
+  if (!signature) {
+   return SIGNATURE_SVG;
+  }
+  return signature.url;
+}
+
 function drawFittedText(
   page: PDFPage,
   text: string,
@@ -121,15 +136,16 @@ function drawFittedText(
 
 async function rasterizeSignature(svgPath: string) {
   try {
-    const { stdout } = await execFileAsync(
-      "magick",
-      ["-background", "none", svgPath, "-trim", "+repage", "png:-"],
-      { encoding: "buffer", maxBuffer: 12 * 1024 * 1024 },
-    );
-    return Buffer.isBuffer(stdout) ? stdout : Buffer.from(stdout);
+    return await sharp(svgPath, { density: 150 })
+      .ensureAlpha()
+      .trim()
+      .png()
+      .toBuffer();
   } catch (error) {
-    const detail = error instanceof Error ? error.message : "magick";
-    throw new Error(`Не удалось наложить подпись: ${detail}`, { cause: "generate" });
+    const detail = error instanceof Error ? error.message : "sharp";
+    throw new Error(`Не удалось наложить подпись: ${detail}`, {
+      cause: "generate",
+    });
   }
 }
 
@@ -138,18 +154,21 @@ export async function renderCertificatePdf(input: {
   studentName: string;
   courseName: string;
   issuedAt: Date;
+  signatureId: number | null;
 }) {
-  const [templateBytes, regularBytes, boldBytes, signaturePng] = await Promise.all([
+  const [templateBytes, regularBytes, boldBytes, semiboldBytes, signaturePng] = await Promise.all([
     readFile(input.templatePath),
     readFirstExisting(FONT_CANDIDATES.regular),
     readFirstExisting(FONT_CANDIDATES.bold),
-    rasterizeSignature(SIGNATURE_SVG),
+    readFirstExisting(FONT_CANDIDATES.semibold),
+    rasterizeSignature(await resolveSignaturePath(input.signatureId)),
   ]);
 
   const pdfDoc = await PDFDocument.create();
   pdfDoc.registerFontkit(fontkit);
   const regular = await pdfDoc.embedFont(toPdfBytes(regularBytes), { subset: true });
   const bold = await pdfDoc.embedFont(toPdfBytes(boldBytes), { subset: true });
+  
   const background = await pdfDoc.embedPng(toPdfBytes(templateBytes));
   const signature = await pdfDoc.embedPng(toPdfBytes(signaturePng));
 
@@ -168,7 +187,7 @@ export async function renderCertificatePdf(input: {
     bold,
     34,
     width / 2,
-    height * 0.548,
+    height * 0.540,
     width * 0.62,
   );
   drawFittedText(
@@ -177,15 +196,15 @@ export async function renderCertificatePdf(input: {
     bold,
     26,
     width / 2,
-    height * 0.418,
+    height * 0.400,
     width * 0.42,
   );
   drawFittedText(
     page,
     formatIssuedAt(input.issuedAt),
     regular,
-    16,
-    width * 0.255,
+    24,
+    width * 0.235,
     height * 0.176,
     width * 0.24,
   );
@@ -220,18 +239,24 @@ export async function generateCertificate(courseId: number, userId: number) {
     }
     const enrollment = await prisma.userCourse.findUnique({
       where: { userId_courseId: { userId, courseId } },
-      include: { certificate: { include: { file: true } } },
+      include: { 
+        certificate: { include: { file: true } },
+        course: { include: { instructors: { include: { user: { select: { signatureId: true } } } } } }
+      },
     });
     if (!enrollment) {
       throw new Error("Студент не записан на курс", { cause: "not_found" });
     }
 
     const issuedAt = enrollment.certificate?.issuedAt ?? new Date();
+    
+    const signatureId = enrollment.course.instructors.find((instructor) => instructor.user.signatureId !== null)?.user.signatureId ?? null;
     const pdfBytes = await renderCertificatePdf({
       templatePath: resolveTemplatePath(course.certificateTemplate),
       studentName: studentName(user),
       courseName: course.name,
       issuedAt,
+      signatureId: signatureId ?? null,
     });
 
     const existingFile = enrollment.certificate?.file;

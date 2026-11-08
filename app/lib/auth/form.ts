@@ -30,6 +30,7 @@ export const signUpSchema = object({
   phone: z.preprocess(phoneToNull, z.string().nullable()),
   acceptEmailNotifications: z.boolean().default(false),
   acceptEmailPromotions: z.boolean().default(false),
+  signatureId: z.number().nullable(),
   userDetails: z.preprocess(
     emptyToNull,
     object({

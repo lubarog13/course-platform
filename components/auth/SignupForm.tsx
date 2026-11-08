@@ -1,7 +1,7 @@
 "use client";
 
 import { Input } from "@/components/ui/input";
-import { FieldGroup, Field, FieldLabel } from "@/components/ui/field";
+import { FieldGroup, Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import { signUpSchema } from "@/app/lib/auth/form";
 import { signUpAction, updateUserAction } from "@/app/lib/auth/actions";
@@ -17,6 +17,8 @@ import { User } from "@prisma/client";
 import { UserDetails, UserWithAgreement } from "@/app/lib/models";
 import { useSession } from "next-auth/react";
 import { toast } from "../ui/toast";
+import FileUploader from "../base/FileUploader";
+import { File as FileModel } from "@/app/lib/models";
 import {
   Select,
   SelectContent,
@@ -58,6 +60,7 @@ export function SignupForm({
   const { data: session } = useSession();
   const userRole = session?.user?.role;
   const adminEdit = userRole === "admin";
+  const teacherEdit = userRole === "teacher";
   const form = useForm<z.infer<typeof signUpSchema>>({
     resolver: zodResolver(signUpSchema),
     defaultValues: {
@@ -73,6 +76,7 @@ export function SignupForm({
       role: user?.role ?? "student",
       acceptEmailNotifications: user?.agreement.accept_email_notifications ?? true,
       acceptEmailPromotions: user?.agreement.accept_email_promotions ?? true,
+      signatureId: user?.signatureId ?? null,
     },
   });
 
@@ -92,6 +96,7 @@ export function SignupForm({
             role: values.role as "student" | "teacher" | "admin",
             acceptEmailNotifications: values.acceptEmailNotifications,
             acceptEmailPromotions: values.acceptEmailPromotions,
+            signatureId: values.signatureId ?? null,
           })
         : await signUpAction(values);
       if (!result.ok) {
@@ -195,6 +200,20 @@ export function SignupForm({
             />
             <FieldError message={errors.phone?.message} />
           </Field>
+          {editMode && (adminEdit || teacherEdit) && (
+        <Field>
+          <FieldLabel>Подпись для сертификата</FieldLabel>
+          <FieldDescription>Прикрепите файл с подписью в формате svg. Если вы не хотите использовать подпись, оставьте поле пустым, тогда будет использоваться стандартная подпись платформы.</FieldDescription>
+          <FileUploader
+            onUploaded={(files: FileModel[]) => {
+              form.setValue("signatureId", files[0]?.id ?? null);
+            }}
+            accept={{
+              "image/svg+xml": [".svg"],
+            }}
+          />
+        </Field>
+      )}
           <Field>
             <FieldLabel htmlFor="email">
               Email <span className="text-destructive">*</span>
