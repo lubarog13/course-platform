@@ -1,9 +1,10 @@
+"use client";
+
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
   Card,
   CardAction,
-  CardDescription,
   CardFooter,
   CardHeader,
   CardTitle,
@@ -11,42 +12,89 @@ import {
 } from "@/components/ui/card"
 import { CourseDto, CourseListQuery } from "@/app/lib/courses"
 import { CourseLevelValues } from "@/lib/models"
-import { useRouter } from "next/navigation"
+import { useRouter } from "next/navigation";
 import { Star, StarOff, StarHalf, Clock, Unlock, Lock } from 'lucide-react';
-export function CourseCard({ course, updateFilters }: { course: CourseDto, updateFilters: (filters: {tag?: string} & CourseListQuery) => void }) {
-  let imageFile;
+
+export function CourseCard({
+  course,
+  updateFilters,
+  isEnrolled,
+}: {
+  course: CourseDto;
+  updateFilters: (filters: { tag?: string } & CourseListQuery) => void;
+  isEnrolled?: boolean;
+}) {
+  const router = useRouter();
+  let imageFile: string;
   if (course.coverFile?.url) {
     const filename =
       typeof course.coverFile?.url === "string"
         ? course.coverFile?.url.split(/[/\\]/).pop()
         : undefined;
-    if (!filename) return;
-    imageFile = `/api/uploads/${encodeURIComponent(filename)}`;
+    imageFile = filename
+      ? `/api/uploads/${encodeURIComponent(filename)}`
+      : "/images/course-placeholder.jpeg";
   } else {
-    imageFile = '/images/course-placeholder.jpeg';
+    imageFile = "/images/course-placeholder.jpeg";
   }
-    const levelLabel = course.level ? CourseLevelValues[course.level] : 'Без уровня'
-    const duration = course.durationSeconds ? formatDuration(course.durationSeconds) : 'не указано'
-    function formatDuration(duration: number) {
-      const hours = Math.floor(duration / 3600)
-      return `${hours}ч`
+  const levelLabel = course.level ? CourseLevelValues[course.level] : "Без уровня";
+  const duration = course.durationSeconds
+    ? formatDuration(course.durationSeconds)
+    : "не указано";
+
+  function formatDuration(seconds: number) {
+    const hours = Math.floor(seconds / 3600);
+    return `${hours}ч`;
+  }
+
+  function goToCourse(toLearn: boolean) {
+    if (toLearn && isEnrolled) {
+      router.push(`/course/${course.slug}/learn`);
+      return;
     }
-    const router = useRouter()
-    return (
-    <Card className="relative mx-auto w-full max-w-sm pt-0">
+    router.push(`/course/${course.slug}`);
+  }
+
+  return (
+    <Card
+      className="relative mx-auto w-full max-w-sm pt-0 cursor-pointer"
+      onClick={() => goToCourse(true)}
+    >
       <div className="pointer-events-none absolute inset-x-0 top-0 z-30 aspect-video dark:bg-black/35" />
       <img
         src={imageFile}
-        alt={course.coverFile?.originalName || 'Курс обложка'}
+        alt={course.coverFile?.originalName || "Курс обложка"}
         className="relative z-20 aspect-video w-full object-cover "
       />
       <CardHeader className="flex flex-col gap-3">
         <CardAction className="flex items-center flex-wrap gap-1">
-          {course.publishedAt === null ? <Badge variant="outline" className="text-xs text-muted-foreground">Черновик</Badge> : ''}
-          {course.category?.slug && (
-            <Badge variant="outline" onClick={() => updateFilters({ category: course.category?.slug })}>{course.category?.name}</Badge>
+          {course.publishedAt === null ? (
+            <Badge variant="outline" className="text-xs text-muted-foreground">
+              Черновик
+            </Badge>
+          ) : (
+            ""
           )}
-          <Badge variant="secondary" onClick={() => updateFilters({ level: course.level })}>{levelLabel}</Badge>
+          {course.category?.slug && (
+            <Badge
+              variant="outline"
+              onClick={(event) => {
+                event.stopPropagation();
+                updateFilters({ category: course.category?.slug });
+              }}
+            >
+              {course.category?.name}
+            </Badge>
+          )}
+          <Badge
+            variant="secondary"
+            onClick={(event) => {
+              event.stopPropagation();
+              updateFilters({ level: course.level });
+            }}
+          >
+            {levelLabel}
+          </Badge>
         </CardAction>
         <CardTitle className="text-lg">{course.name}</CardTitle>
       </CardHeader>
@@ -65,27 +113,61 @@ export function CourseCard({ course, updateFilters }: { course: CourseDto, updat
         </p>
         <div className="flex items-center gap-3 mt-auto pt-2">
           <div className="flex items-center gap-1">
-          <Clock className="w-4 h-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">{duration}</span>
+            <Clock className="w-4 h-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">{duration}</span>
           </div>
           <div className="flex items-center gap-1">
-            {course.needEnrollment ? <Lock className="w-4 h-4 text-muted-foreground" /> : <Unlock className="w-4 h-4 text-muted-foreground" />}
-            <span className="text-sm text-muted-foreground">{course.needEnrollment ? 'Нужна регистрация' : 'Без регистрации'}</span>
+            {course.needEnrollment ? (
+              <Lock className="w-4 h-4 text-muted-foreground" />
+            ) : (
+              <Unlock className="w-4 h-4 text-muted-foreground" />
+            )}
+            <span className="text-sm text-muted-foreground">
+              {course.needEnrollment ? "Нужна регистрация" : "Без регистрации"}
+            </span>
           </div>
         </div>
         <div className="flex items-center gap-2 mt-3">
           {course.tags.map((tag) => (
-            <Badge key={tag} variant="secondary" className="text-xs capitalize bg-muted cursor-pointer text-muted-foreground hover:bg-muted hover:text-muted-foreground" onClick={() => updateFilters({ tag: tag })}>{tag}</Badge>
+            <Badge
+              key={tag}
+              variant="secondary"
+              className="text-xs capitalize bg-muted cursor-pointer text-muted-foreground hover:bg-muted hover:text-muted-foreground"
+              onClick={(event) => {
+                event.stopPropagation();
+                updateFilters({ tag });
+              }}
+            >
+              {tag}
+            </Badge>
           ))}
         </div>
       </CardContent>
       <CardFooter className="gap-3">
-        <Button className="flex-1" onClick={() => router.push(`/course/${course.slug}`)}>Посмотреть курс</Button>
+        <Button
+          className="flex-1"
+          onClick={(event) => {
+            event.stopPropagation();
+            goToCourse(false);
+          }}
+        >
+          Посмотреть курс
+        </Button>
         <div className="flex items-center gap-2">
-          {course.rating && course.rating > 0 ? <Star className="w-4 h-4 text-yellow-500" /> : course.rating && course.rating > 4 ? <StarHalf className="w-4 h-4 text-yellow-500" /> : <StarOff className="w-4 h-4 text-zinc-500" />}
-          <p className={`text-sm ${course.rating && course.rating > 0 ? 'text-yellow-500' : 'text-zinc-500'}`}>{course.rating || 0}</p>
+          {course.rating && course.rating > 0 ? (
+            <Star className="w-4 h-4 text-yellow-500" />
+          ) : course.rating && course.rating > 4 ? (
+            <StarHalf className="w-4 h-4 text-yellow-500" />
+          ) : (
+            <StarOff className="w-4 h-4 text-zinc-500" />
+          )}
+          <p
+            className={`text-sm ${course.rating && course.rating > 0 ? "text-yellow-500" : "text-zinc-500"}`}
+          >
+            {course.rating || 0}
+          </p>
         </div>
       </CardFooter>
     </Card>
-  )
+  );
 }

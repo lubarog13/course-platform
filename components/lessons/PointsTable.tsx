@@ -35,11 +35,12 @@ function formatDeadline(deadline: Date | string | null) {
   return date.toLocaleDateString("ru-RU");
 }
 
-function isDeadlinePassed(deadline: Date | string | null) {
-  if (!deadline) return false;
-  const date = deadline instanceof Date ? deadline : new Date(deadline);
-  if (Number.isNaN(date.getTime())) return false;
-  return date.getTime() < Date.now();
+function isDeadlinePassed(row: PointsRow) {
+  if (!row.deadline) return "";
+  const date = row.deadline instanceof Date ? row.deadline : new Date(row.deadline);
+  if (Number.isNaN(date.getTime())) return "";
+  if (row.earnedPoints != null && row.earnedPoints !== 0) return "text-muted-foreground";
+  return date.getTime() < Date.now() ? "text-red-600" : "";
 }
 
 function buildRows(courseParts: CoursePartDto[]): PointsRow[] {
@@ -120,7 +121,7 @@ export default function PointsTable({
               </TableCell>
               <TableCell
                 className={cn(
-                  isDeadlinePassed(row.deadline) && "text-muted-foreground",
+                  isDeadlinePassed(row),
                 )}
               >
                 {formatDeadline(row.deadline)}

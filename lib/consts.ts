@@ -27,3 +27,7 @@ export const COURSE_DEFAULT_DESCRIPTION = `
 - Вопрос 2
 - Вопрос 3
 `;
+
+
+export const DEFAULT_CERTIFICATE_TEMPLATE = 'course_default.pdf';
+export const DEFAULT_SIGNATURE = 'signature.svg';

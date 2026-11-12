@@ -8,11 +8,13 @@ import {
   parseCourseBody,
   prismaErrorResponse,
   serializeCourse,
+  syncCourseCoTeachers,
   syncCourseParts,
   toCourseFullDto,
 } from "@/app/lib/courses";
 import { prisma } from "@/app/lib/prisma";
 import { auth } from "@/auth";
+import { getCompletedCourses } from "@/app/lib/certificate";
 
 export const dynamic = "force-dynamic";
 
@@ -20,11 +22,17 @@ export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const session = await auth();
   const forUser = params.get("enrolled") ? params.get("enrolled") == "1" : null;
-  if (forUser && !session?.user?.id) {
+  const completed = params.get("completed") ? params.get("completed") == "1" : null;
+  if ((forUser || completed) && !session?.user?.id) {
     return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
   }
   try {
     const viewerId = session?.user?.id ? Number(session.user.id) : null;
+    if (completed) {
+      const completedCourses = await getCompletedCourses(viewerId ?? 0);
+      return NextResponse.json(completedCourses);
+    }
+    
     const result = await listCourses({
       published: params.get("published"),
       deleted: params.get("deleted"),
@@ -71,7 +79,7 @@ export async function POST(request: NextRequest) {
       return jsonError("Нужны name и slug", 400);
     }
 
-    const { parts, ...courseData } = data;
+    const { parts, coTeacherIds, ...courseData } = data;
     const userId = Number(session.user.id);
     const name = courseData.name as string;
     const slug = courseData.slug as string;
@@ -101,6 +109,10 @@ export async function POST(request: NextRequest) {
 
     if (parts && parts.length > 0) {
       await syncCourseParts(course.id, parts);
+    }
+
+    if (coTeacherIds !== undefined) {
+      await syncCourseCoTeachers(course.id, coTeacherIds, userId);
     }
 
     const full = await prisma.course.findFirst({

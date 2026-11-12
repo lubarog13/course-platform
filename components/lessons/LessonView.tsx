@@ -14,8 +14,10 @@ import Loading from "../layout/loading";
 import { useRouter } from "next/navigation";
 import type { UserLesson } from "@prisma/client";
 import CommentList from "../comments/CommentList";
+import CertificateModal from "../certificates/CertificateModal";
 
 type LessonViewProps = {
+  courseId: number;
   canEdit: boolean;
   lessonId: number;
   prevLesson?: LessonDto;
@@ -47,12 +49,14 @@ export default function LessonView({
   nextLesson,
   canEdit,
   partDeadline = null,
+  courseId,
   onArrowClick,
   onProgressUpdate,
 }: LessonViewProps) {
   const [lesson, setLesson] = useState<LessonFullDto | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showCertificateModal, setShowCertificateModal] = useState(false);
   const router = useRouter();
 
   const progressIdRef = useRef<number | null>(null);
@@ -107,7 +111,7 @@ export default function LessonView({
           } | null;
           throw new Error(payload?.error ?? "Не удалось обновить прогресс");
         }
-        const data = (await response.json()) as UserLesson;
+        const data = (await response.json()) as UserLesson & { course_completed?: boolean };
         setLesson((current) =>
           current
             ? {
@@ -125,6 +129,9 @@ export default function LessonView({
         }
         if (data.completed) {
           completedRef.current = true;
+        }
+        if (data.course_completed) {
+          setShowCertificateModal(true);
         }
         onProgressUpdate();
         return data;
@@ -261,6 +268,11 @@ export default function LessonView({
 
   return (
     <div className="flex flex-col gap-4 max-w-7xl mx-auto sm:px-4 pt-8 min-h-screen relative">
+      {
+        showCertificateModal && (
+          <CertificateModal open={showCertificateModal} setOpen={setShowCertificateModal} courseId={courseId} />
+        )
+      }
       <div className="flex lg:flex-nowrap flex-wrap justify-between gap-4  border-b border-gray-200 dark:border-gray-800 pb-4">
         {prevLesson ? (
           <div className="flex items-center gap-2 h-10">
@@ -328,6 +340,7 @@ export default function LessonView({
             <AttemptsList lesson={lesson} />
           ) : (
             <TestView
+              courseId={courseId}
               lesson={lesson}
               deadline={partDeadline}
               onAttemptSubmitted={handleTestSubmitted}

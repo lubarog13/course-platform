@@ -23,7 +23,7 @@ export function CoursePreview({ course }: { course: CourseDto }) {
     return `${hours} ${declOfNum(hours, ["час", "часа", "часов"])} ${minutes} ${declOfNum(minutes, ["минута", "минуты", "минут"])}`;
   }, [course.durationSeconds]);
   const [enrollment, setEnrollment] = useState<UserCourse | null>(null);
-  const [reviews, setReviews] = useState<ReviewDto[]>([]);
+  const [reviews, setReviews] = useState<ReviewDto[] | null>(null);
   useEffect(() => {
     if (course.enrollments && course.enrollments.length > 0) {
       setEnrollment(course.enrollments[0]);
@@ -32,14 +32,19 @@ export function CoursePreview({ course }: { course: CourseDto }) {
 
   useEffect(() => {
     const controller = new AbortController();
+    setReviews(null);
     fetch(`/api/review?courseId=${course.id}`, { signal: controller.signal })
       .then(async (response) => {
-        if (!response.ok) return;
+        if (!response.ok) {
+          setReviews([]);
+          return;
+        }
         const data = (await response.json()) as { reviews?: ReviewDto[] };
         setReviews(data.reviews ?? []);
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
+        setReviews([]);
       });
     return () => controller.abort();
   }, [course.id]);

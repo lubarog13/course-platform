@@ -7,6 +7,7 @@ import {
   parseCourseBody,
   prismaErrorResponse,
   serializeCourse,
+  syncCourseCoTeachers,
   syncCourseParts,
   toCourseFullDto,
 } from "@/app/lib/courses";
@@ -75,7 +76,16 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
   try {
     const data = parseCourseBody(body, "update");
-    const { parts, ...courseData } = data;
+    const { parts, coTeacherIds, ...courseData } = data;
+    const actorId = Number(session.user.id);
+    const isAdmin = session.user.role === "admin";
+    const isOwner = existing.instructors.some(
+      (item) => item.userId === actorId && item.role === "owner",
+    );
+
+    if (coTeacherIds !== undefined && !isAdmin && !isOwner) {
+      return jsonError("Только владелец курса или администратор может менять соавторов", 403);
+    }
 
     await prisma.course.update({
       where: { id: existing.id },
@@ -84,6 +94,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     if (parts !== undefined) {
       await syncCourseParts(existing.id, parts);
+    }
+
+    if (coTeacherIds !== undefined) {
+      const ownerUserId =
+        existing.instructors.find((item) => item.role === "owner")?.userId ?? null;
+      await syncCourseCoTeachers(existing.id, coTeacherIds, ownerUserId);
     }
 
     const full = await prisma.course.findFirst({

@@ -27,6 +27,7 @@ function reviveFormValues(raw: CourseFormValues): CourseFormValues {
     ...raw,
     publishedAt:
       publishedAt && !Number.isNaN(publishedAt.getTime()) ? publishedAt : null,
+    coTeacherIds: Array.isArray(raw.coTeacherIds) ? raw.coTeacherIds : [],
   };
 }
 

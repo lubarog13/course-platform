@@ -64,6 +64,7 @@ enum NotificationType {
   course_enrollment_request_accepted
   course_enrollment_request_rejected
   course_review
+  certificate_available
 }
 
 enum NotificationEntityType {

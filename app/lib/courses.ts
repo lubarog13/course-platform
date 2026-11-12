@@ -173,6 +173,7 @@ export type CourseListQuery = {
 export type CourseFullDto = Course & {
   coverFile: FileModel | null;
   courseParts: CoursePartEditData[];
+  teachers: Instructor[];
 }
 
 function parseIntParam(value: string | null | undefined, fallback: number, min: number, max: number) {
@@ -288,20 +289,42 @@ export function buildCourseListArgs(query: CourseListQuery) {
 
 export async function listCourses(query: CourseListQuery) {
   const { where, limit, offset, page, sort, order } = buildCourseListArgs(query);
+  const viewerId =
+    query.viewerId != null && Number.isFinite(query.viewerId)
+      ? query.viewerId
+      : null;
 
   const [rows, total] = await prisma.$transaction([
     prisma.course.findMany({
       where,
       take: limit,
       skip: offset,
-      include: courseInclude,
+      include: {
+        ...courseInclude,
+        // Только запись текущего пользователя — для редиректа «к обучению»
+        enrollments: viewerId
+          ? {
+              where: {
+                userId: viewerId,
+                status: { in: ["enrolled", "in_progress", "completed"] },
+              },
+            }
+          : false,
+      },
       orderBy: [{ [sort]: order }, { id: "asc" }],
     }),
     prisma.course.count({ where }),
   ]);
 
   return {
-    items: rows.map(serializeCourse),
+    items: rows.map((row) =>
+      serializeCourse({
+        ...row,
+        enrollments: "enrollments" in row && Array.isArray(row.enrollments)
+          ? row.enrollments
+          : [],
+      } as CourseRecord),
+    ),
     total,
     page,
     limit,
@@ -400,6 +423,8 @@ export type CourseWriteData = {
   deadlineDays?: number | null;
   publishedAt?: Date | null;
   parts?: CoursePartWriteInput[];
+  /** ID соавторов (co_teacher). Owner не передаётся и не меняется здесь. */
+  coTeacherIds?: number[];
 };
 
 function asOptionalIntField(
@@ -483,6 +508,7 @@ export function parseCourseBody(body: unknown, mode: "create" | "update"): Cours
   const deadlineDays = asOptionalIntField(raw.deadlineDays, "deadlineDays", 0);
   const publishedAt = asPublishedAt(raw.publishedAt);
   const parts = asCourseParts(raw.parts);
+  const coTeacherIds = asCoTeacherIds(raw.coTeacherIds);
 
   if (description && description.length > 10000) {
     throw new Error("Описание курса не может быть больше 10000 символов", {cause: "invalid"});
@@ -504,7 +530,86 @@ export function parseCourseBody(body: unknown, mode: "create" | "update"): Cours
     ...(tags !== undefined ? { tags } : {}),
     ...(publishedAt !== undefined ? { publishedAt } : {}),
     ...(parts !== undefined ? { parts } : {}),
+    ...(coTeacherIds !== undefined ? { coTeacherIds } : {}),
   };
+}
+
+function asCoTeacherIds(value: unknown): number[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    throw new Error("Поле coTeacherIds должно быть массивом", { cause: "invalid" });
+  }
+  const ids = value.map((item, index) => {
+    const id = asOptionalId(item, `coTeacherIds[${index}]`);
+    if (id === undefined || id === null) {
+      throw new Error(`coTeacherIds[${index}] должно быть положительным целым числом`, {
+        cause: "invalid",
+      });
+    }
+    return id;
+  });
+  return [...new Set(ids)];
+}
+
+/** Синхронизация соавторов: owner сохраняется, co_teacher полностью заменяется списком. */
+export async function syncCourseCoTeachers(
+  courseId: number,
+  coTeacherIds: number[],
+  ownerUserId?: number | null,
+) {
+  const owner =
+    ownerUserId ??
+    (
+      await prisma.courseInstructor.findFirst({
+        where: { courseId, role: "owner" },
+        select: { userId: true },
+      })
+    )?.userId;
+
+  const uniqueIds = [...new Set(coTeacherIds)].filter(
+    (id) => owner == null || id !== owner,
+  );
+
+  if (uniqueIds.length > 0) {
+    const teachers = await prisma.user.findMany({
+      where: {
+        id: { in: uniqueIds },
+        role: { in: ["teacher", "admin"] },
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    if (teachers.length !== uniqueIds.length) {
+      throw new Error(
+        "Соавтором может быть только существующий преподаватель или администратор",
+        { cause: "invalid" },
+      );
+    }
+  }
+
+  await prisma.$transaction(async (tx) => {
+    await tx.courseInstructor.deleteMany({
+      where: {
+        courseId,
+        role: "co_teacher",
+        ...(uniqueIds.length > 0 ? { userId: { notIn: uniqueIds } } : {}),
+      },
+    });
+
+    for (const userId of uniqueIds) {
+      await tx.courseInstructor.upsert({
+        where: {
+          courseId_userId: { courseId, userId },
+        },
+        update: { role: "co_teacher" },
+        create: {
+          courseId,
+          userId,
+          role: "co_teacher",
+        },
+      });
+    }
+  });
 }
 
 /** Синхронизация частей курса внутри транзакции (create/update/soft-delete). */
@@ -574,7 +679,7 @@ export async function syncCourseParts(
 }
 
 export function toCourseFullDto(
-  course: CourseRecord | (CourseDto & { parts?: CoursePart[] | null }),
+  course: CourseRecord | (CourseDto & { parts?: CoursePart[] | null } & { instructors: Instructor[] }),
 ): CourseFullDto {
   const parts = ("parts" in course ? course.parts : null) ?? [];
   return {
@@ -588,6 +693,7 @@ export function toCourseFullDto(
       deadlineDays: part.deadlineDays,
       publishedAt: null,
     })),
+    teachers: course.instructors.map(serializeInstructor),
   };
 }
 
@@ -619,5 +725,5 @@ export function prismaErrorResponse(error: unknown) {
 
 export function getCertificateTemplatesList(): string[] {
   const dir = path.join(process.cwd(), "public", "images", "pdf_templates");
-  return readdirSync(dir).filter((name) => !name.startsWith("."));
+  return readdirSync(dir).filter((name) => !name.startsWith(".") && name !== 'course_default.pdf');
 }

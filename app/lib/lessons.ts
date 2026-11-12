@@ -13,6 +13,8 @@ import {
 import { LessonType, QuestionType } from "@/app/lib/models";
 import { prisma } from "@/app/lib/prisma";
 import { isCourseStaff } from "@/app/lib/enrollment";
+import { isCourseCompleted } from "@/app/lib/certificate";
+import { createNotification, sendEmailNotification } from "./notifications";
 
 export type TestQuestionOptionDto = {
   id: number;
@@ -776,7 +778,7 @@ export function parseTeacherGradeBody(body: unknown): TeacherGradePatchData {
   return { scores };
 }
 
-export async function findTestAttempt(id: number, resultData: TestAttemptReturnData | null, userId?: number) {
+export async function findTestAttempt(id: number, resultData: TestAttemptReturnData | null, userId?: number, courseId?: number) {
   const attempt = await prisma.testAttempt.findFirst({
     where: {
       id,
@@ -787,9 +789,38 @@ export async function findTestAttempt(id: number, resultData: TestAttemptReturnD
   if (!attempt) {
     throw new Error("Попытка не найдена", { cause: "not_found" });
   }
+
+  let courseCompleted = false;
+
+  if (attempt.passed && userId && courseId) {
+    courseCompleted = await isCourseCompleted(userId, courseId);
+    if (courseCompleted) {
+      const course = await prisma.course.findUnique({
+        where: { id: courseId },
+        select: { name: true },
+      });
+      if (course) {
+        await createNotification(attempt.userId, "certificate_available", "Курс завершен", "Вам доступен сертификат за курс " + course.name, "course", courseId);
+            try {
+              await sendEmailNotification(attempt.userId, {
+                title: "Курс завершен",
+                body: "Вам доступен сертификат за курс " + course.name,
+                url: '/user/certificates',
+                label: 'Открыть список сертификатов'
+              });
+            } catch (error) {
+              console.error("Error sending email notification:", error);
+            }
+          }
+        } else {
+          throw new Error("Курс не найден", { cause: "not_found" });
+        }
+    
+  }
   return {
     ...attempt,
     ...(resultData !== null ? { ...resultData } : {}),
+    course_completed: courseCompleted,
   };
 }
 
@@ -1363,7 +1394,11 @@ export async function saveTestAttemptAnswers(
     where: { id: attemptId },
     include: attemptInclude,
   });
-  const saved = await findTestAttempt(attemptId, result, userId);
+  const coursePart = await prisma.coursePart.findFirst({
+    where: { lessons: { some: { id: attempt.lesson.id } } },
+    select: { courseId: true },
+  });
+  const saved = await findTestAttempt(attemptId, result, userId, coursePart?.courseId);
   // answers из result — разбор; selectedAnswers — фактический выбор из БД
   return {
     ...saved,
@@ -1456,7 +1491,7 @@ export async function saveTeacherTestScores(
           id: true,
           type: true,
           passingScore: true,
-          coursePart: { select: { courseId: true } },
+          coursePart: { select: { courseId: true, course: { select: { name: true } } } },
           questions: {
             select: { id: true, score: true },
           },
@@ -1536,6 +1571,7 @@ export async function saveTeacherTestScores(
         ? null
         : totalScore >= attempt.lesson.passingScore;
 
+
     await tx.testAttempt.update({
       where: { id: attemptId },
       data: {
@@ -1570,5 +1606,19 @@ export async function saveTeacherTestScores(
     });
   });
 
+  const isCompleted = await isCourseCompleted(attempt.userId, attempt.lesson.coursePart.courseId);
+  if (isCompleted) {
+    await createNotification(attempt.userId, "certificate_available", "Курс завершен", "Вам доступен сертификат за курс " + attempt.lesson.coursePart.course.name, "course", attempt.lesson.coursePart.courseId);
+            try {
+              await sendEmailNotification(attempt.userId, {
+                title: "Курс завершен",
+                body: "Вам доступен сертификат за курс " + attempt.lesson.coursePart.course.name,
+                url: '/user/certificates',
+                label: 'Открыть список сертификатов'
+              });
+            } catch (error) {
+              console.error("Error sending email notification:", error);
+            }
+  }
   return findTestAttempt(attemptId, null);
 }

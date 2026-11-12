@@ -39,7 +39,9 @@ const nullableNumber = z.preprocess((value) => {
     tags: z.array(z.string()).optional(),
     deadlineDays: nullableNumber,
     publishedAt: z.date().nullable(),
-    certificateTemplate: z.string().optional(),
+    certificateTemplate: z.string().optional().nullable(),
+    /** ID пользователей с ролью co_teacher (без owner) */
+    coTeacherIds: z.array(z.number().int().positive()).default([]),
   }).superRefine((data, ctx) => {
     if (data.deadlineDays != null && (Number.isNaN(data.deadlineDays) || data.deadlineDays < 0)) {
       ctx.addIssue({
@@ -86,6 +88,9 @@ const nullableNumber = z.preprocess((value) => {
       deadlineDays: course.deadlineDays,
       publishedAt: course.publishedAt ? new Date(course.publishedAt) : null,
       certificateTemplate: course.certificateTemplate ?? undefined,
+      coTeacherIds: (course.teachers ?? [])
+        .filter((teacher) => teacher.role === "co_teacher")
+        .map((teacher) => teacher.userId),
     };
   }
 

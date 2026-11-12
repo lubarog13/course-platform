@@ -10,11 +10,16 @@ import sharp from "sharp";
 import { prisma } from "@/app/lib/prisma";
 import { getUploadsDir } from "@/app/lib/uploads";
 import { getCertificateTemplatesList } from "./courses";
-import { Certificate } from "@prisma/client";
+import { Certificate, Course, UserCourse } from "@prisma/client";
 import { File as FileModel } from "@prisma/client";
+import { DEFAULT_CERTIFICATE_TEMPLATE } from "@/lib/consts";
 
 export type CertificateDto = Certificate & {
     file: FileModel;
+}
+
+export type CertificateListDto = CertificateDto & {
+  userCourse: UserCourse & { course: Course };
 }
 
 const NAVY = rgb(0.106, 0.165, 0.29);
@@ -69,9 +74,9 @@ async function readFirstExisting(candidates: string[]) {
   throw new Error("Не найден шрифт с поддержкой кириллицы", { cause: "generate" });
 }
 
-function resolveTemplatePath(templateName: string | null | undefined) {
+function resolveTemplatePath(templateName: string | null | undefined, hasSignature: boolean) {
   const dir = path.join(process.cwd(), "public", "images", "pdf_templates");
-  const raw = templateName?.trim() || getCertificateTemplatesList()[0];
+  const raw = templateName?.trim() || (hasSignature ? getCertificateTemplatesList()[0] : DEFAULT_CERTIFICATE_TEMPLATE);
   if (!raw) {
     throw new Error("Шаблон сертификата не найден", { cause: "not_found" });
   }
@@ -250,9 +255,9 @@ export async function generateCertificate(courseId: number, userId: number) {
 
     const issuedAt = enrollment.certificate?.issuedAt ?? new Date();
     
-    const signatureId = enrollment.course.instructors.find((instructor) => instructor.user.signatureId !== null)?.user.signatureId ?? null;
+    const signatureId = enrollment.course.instructors.find((instructor) => instructor.role === "owner" && instructor.user.signatureId !== null)?.user.signatureId ?? null;
     const pdfBytes = await renderCertificatePdf({
-      templatePath: resolveTemplatePath(course.certificateTemplate),
+      templatePath: resolveTemplatePath(course.certificateTemplate, signatureId !== null),
       studentName: studentName(user),
       courseName: course.name,
       issuedAt,
@@ -312,4 +317,168 @@ export async function generateCertificate(courseId: number, userId: number) {
     console.error(error);
     throw new Error("Ошибка при генерации сертификата", { cause: "generate" });
   }
+}
+
+
+export async function getCertificates(userId: number) {
+  return prisma.certificate.findMany({
+    where: { userCourse: { userId } },
+    include: { file: true, userCourse: { include: { course: true } } },
+  });
+}
+
+export type CompletedCourseDto = Course & {
+  hasCertificate: boolean;
+};
+
+type CourseLessonRef = { id: number; type: string };
+
+async function loadLessonCompletionMaps(userId: number, lessonIds: number[]) {
+  if (lessonIds.length === 0) {
+    return {
+      pointsByLesson: new Map<number, number>(),
+      testsPassed: new Set<number>(),
+    };
+  }
+
+  const [progressRows, attemptRows] = await Promise.all([
+    prisma.userLesson.findMany({
+      where: { userId, lessonId: { in: lessonIds } },
+      select: { lessonId: true, points: true },
+    }),
+    prisma.testAttempt.findMany({
+      where: {
+        userId,
+        lessonId: { in: lessonIds },
+        submittedAt: { not: null },
+        score: { not: null },
+        maxScore: { not: null },
+      },
+      select: { lessonId: true, score: true, maxScore: true },
+    }),
+  ]);
+
+  const pointsByLesson = new Map(
+    progressRows.map((row) => [row.lessonId, row.points]),
+  );
+  const testsPassed = new Set<number>();
+  for (const attempt of attemptRows) {
+    if (
+      attempt.score != null &&
+      attempt.maxScore != null &&
+      attempt.score >= attempt.maxScore
+    ) {
+      testsPassed.add(attempt.lessonId);
+    }
+  }
+
+  return { pointsByLesson, testsPassed };
+}
+
+function areLessonsCompleted(
+  lessons: CourseLessonRef[],
+  pointsByLesson: Map<number, number>,
+  testsPassed: Set<number>,
+) {
+  if (lessons.length === 0) return false;
+  return lessons.every((lesson) => {
+    if (lesson.type === "test") {
+      return testsPassed.has(lesson.id);
+    }
+    return (pointsByLesson.get(lesson.id) ?? 0) > 0;
+  });
+}
+
+/** Пройден ли конкретный курс пользователем. */
+export async function isCourseCompleted(
+  userId: number,
+  courseId: number,
+): Promise<boolean> {
+  const enrollment = await prisma.userCourse.findFirst({
+    where: {
+      userId,
+      courseId,
+      course: { deletedAt: null },
+    },
+    include: {
+      certificate: true,
+      course: {
+        include: {
+          parts: {
+            where: { deletedAt: null },
+            include: {
+              lessons: {
+                where: { deletedAt: null },
+                select: { id: true, type: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!enrollment) return false;
+
+  const lessons = enrollment.course.parts.flatMap((part) => part.lessons);
+  const lessonIds = lessons.map((lesson) => lesson.id);
+  const { pointsByLesson, testsPassed } = await loadLessonCompletionMaps(
+    userId,
+    lessonIds,
+  );
+
+  return areLessonsCompleted(lessons, pointsByLesson, testsPassed) && enrollment.certificate === null;
+}
+
+/**
+ * Курсы, которые пользователь полностью прошёл:
+ * - тест: есть попытка со score >= maxScore
+ * - остальные уроки: UserLesson.points > 0
+ */
+export async function getCompletedCourses(
+  userId: number,
+): Promise<CompletedCourseDto[]> {
+  const enrollments = await prisma.userCourse.findMany({
+    where: {
+      userId,
+      course: { deletedAt: null },
+    },
+    include: {
+      certificate: { select: { id: true } },
+      course: {
+        include: {
+          parts: {
+            where: { deletedAt: null },
+            include: {
+              lessons: {
+                where: { deletedAt: null },
+                select: { id: true, type: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const lessonIds = enrollments.flatMap((enrollment) =>
+    enrollment.course.parts.flatMap((part) =>
+      part.lessons.map((lesson) => lesson.id),
+    ),
+  );
+
+  const { pointsByLesson, testsPassed } = await loadLessonCompletionMaps(
+    userId,
+    lessonIds,
+  );
+
+  return enrollments
+    .filter((enrollment) => {
+      const lessons = enrollment.course.parts.flatMap((part) => part.lessons);
+      return areLessonsCompleted(lessons, pointsByLesson, testsPassed);
+    })
+    .map(({ certificate, course: { parts: _parts, ...course } }) => ({
+      ...course,
+      hasCertificate: certificate != null,
+    }));
 }

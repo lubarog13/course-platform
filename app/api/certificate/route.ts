@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { jsonError } from "@/app/lib/courses";
 import { auth } from "@/auth";
-import { generateCertificate } from "@/app/lib/certificate";
+import { generateCertificate, getCertificates } from "@/app/lib/certificate";
 import { NextResponse } from "next/server";
 
 export async function POST(request: NextRequest) {
@@ -26,5 +26,20 @@ export async function POST(request: NextRequest) {
             return jsonError("Ошибка при генерации сертификата", 500);
         }
         return jsonError("Ошибка при генерации сертификата", 500);
+    }
+}
+
+
+export async function GET(request: NextRequest) {
+    const session = await auth();
+    if (!session?.user) {
+        return jsonError("Не авторизован", 401);
+    }
+    try {
+        const certificates = await getCertificates(Number(session.user.id));
+        return NextResponse.json(certificates);
+    } catch (error) {
+        console.error(error);
+        return jsonError("Ошибка при получении сертификатов", 500);
     }
 }

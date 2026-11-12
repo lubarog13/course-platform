@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import TestQuestion from "./TestQuestion";
 import TestViewForTeacher from "./TestViewForTeacher";
 import { cn } from "@/lib/utils";
+import CertificateModal from "../certificates/CertificateModal";
 
 type AttemptAnswerRow = {
   questionId: number;
@@ -29,6 +30,7 @@ type AttemptWithAnswers = {
   passed: boolean | null;
   answers?: AttemptAnswerRow[];
   selectedAnswers?: AttemptAnswerRow[];
+  course_completed: boolean | null;
 };
 
 function selectedIdsFromAnswer(answer: AttemptAnswerRow): number[] {
@@ -81,6 +83,7 @@ export default function TestView({
   deadline = null,
   gradeUserId,
   onAttemptSubmitted,
+  courseId,
 }: {
   lesson: LessonFullDto;
   /** UserCoursePart.deadline для текущей части курса */
@@ -92,6 +95,7 @@ export default function TestView({
     maxScore: number | null;
     passed: boolean | null;
   }) => void;
+  courseId: number;
 }) {
   if (gradeUserId != null) {
     return <TestViewForTeacher lesson={lesson} userId={gradeUserId} />;
@@ -101,6 +105,7 @@ export default function TestView({
     <TestViewStudent
       lesson={lesson}
       deadline={deadline}
+      courseId={courseId}
       onAttemptSubmitted={onAttemptSubmitted}
     />
   );
@@ -110,6 +115,7 @@ function TestViewStudent({
   lesson,
   deadline = null,
   onAttemptSubmitted,
+  courseId,
 }: {
   lesson: LessonFullDto;
   deadline?: Date | string | null;
@@ -118,6 +124,7 @@ function TestViewStudent({
     maxScore: number | null;
     passed: boolean | null;
   }) => void;
+  courseId: number;
 }) {
   const timeLimit = lesson.timeLimitSeconds;
   const deadlineDate = deadline
@@ -143,6 +150,7 @@ function TestViewStudent({
   const [answers, setAnswers] = useState<TestAnswerWrite[]>([]);
   const [isViewing, setIsViewing] = useState(false);
   const [isLoadingReview, setIsLoadingReview] = useState(false);
+  const [showCertificateModal, setShowCertificateModal] = useState(false);
   const answersRef = useRef(answers);
   const submittingRef = useRef(false);
   const saveChainRef = useRef(Promise.resolve<unknown>(undefined));
@@ -189,6 +197,7 @@ function TestViewStudent({
           }
           const data = (await response.json()) as AttemptWithAnswers & {
             answers?: TestAnswerReturnData[];
+            course_completed?: boolean;
           };
           if (submit) {
             setTestAttempt(data);
@@ -207,6 +216,9 @@ function TestViewStudent({
               maxScore: data.maxScore ?? null,
               passed: data.passed ?? null,
             });
+            if (data.course_completed) {
+              setShowCertificateModal(true);
+            }
             getTestAttempt();
           }
           return data;
@@ -430,6 +442,11 @@ function TestViewStudent({
 
   return (
     <div className="mt-4">
+      {
+        showCertificateModal && (
+          <CertificateModal open={showCertificateModal} setOpen={setShowCertificateModal} courseId={courseId} />
+        )
+      }
       {error && (
         <p className="text-destructive rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
           {error}

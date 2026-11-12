@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { MDXEditorMethods } from "@mdxeditor/editor";
 import { FormProvider, useForm, useWatch, type Resolver, type SubmitHandler } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -31,6 +31,19 @@ import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import { useHotkeys } from "react-hotkeys-hook";
 import CoursePartEdit from "./CoursePartEdit";
+import type { User } from "@/app/lib/models";
+import Link from "next/link";
+import { useSession } from "next-auth/react";
+
+type TeacherOption = {
+  id: number;
+  name: string;
+  surname: string;
+  patronymic: string | null;
+  email: string;
+  role: string;
+};
+
 type CourseEditProps = {
   course: CourseFullDto;
   isNew: boolean;
@@ -38,6 +51,14 @@ type CourseEditProps = {
   userId: number;
   certificateTemplates: string[];
 };
+
+function teacherLabel(teacher: Pick<TeacherOption, "surname" | "name" | "patronymic" | "email">) {
+  const fio = [teacher.surname, teacher.name, teacher.patronymic]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  return fio ? `${fio} (${teacher.email})` : teacher.email;
+}
 type TagOption = {
   tag: string;
   count: number;
@@ -88,7 +109,25 @@ function loadFilterTags(signal: AbortSignal): Promise<{ tags: TagOption[], categ
   });
 }
 
+function getUserInfo(signal: AbortSignal, userId: number): Promise<User | null> {
+  return new Promise((resolve, reject) => {
+    fetch(`/api/user/${userId}`, {
+    signal: signal,
+  }).then((res) => {
+    if (!res.ok) throw new Error("Не удалось загрузить информацию о пользователе");
+    return res.json() as Promise<{ user: User }>;
+  }).then((data) => {
+    return data.user;
+  }).catch((error) => {
+    if (!signal.aborted) reject(error);
+  }).finally(() => {
+    if (!signal.aborted) resolve(null);
+  });
+  });
+}
+
 export default function CourseEdit({ course, isNew, onSaved, userId, certificateTemplates = [] }: CourseEditProps) {
+    const { data: session } = useSession();
     const editorRef = useRef<MDXEditorMethods>(null);
     const [saving, setSaving] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -103,7 +142,8 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
     const [categories, setCategories] = useState<{ name: string, id: number, slug: string }[]>([]);
     const [loading, setLoading] = useState(true);
     const [coverUrl, setCoverUrl] = useState<string | null>(null);
-
+    const [user, setUser] = useState<User | null>(null);
+    const [possibleTeachers, setPossibleTeachers] = useState<TeacherOption[]>([]);
     const form = useForm<CourseFormValues>({
         resolver: zodResolver(courseFormSchema) as Resolver<CourseFormValues>,
         mode: "onSubmit",
@@ -130,8 +170,17 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
     const language = useWatch({ control, name: "language" });
     const description = useWatch({ control, name: "description" });
     const certificateTemplate = useWatch({ control, name: "certificateTemplate" });
+    const coTeacherIds = useWatch({ control, name: "coTeacherIds" }) ?? [];
     const draftCourseIdRef = useRef<number>(course.id < 1 ? -1 : course.id);
     const draftTimerRef = useRef<number | null>(null);
+    const isOwner = useMemo(
+      () =>
+        isNew ||
+        course.teachers.find((teacher) => teacher.role === "owner")?.user.id === userId,
+      [course.teachers, userId, isNew],
+    );
+    const canManageCoTeachers =
+      isOwner || session?.user?.role === "admin";
     useEffect(() => {
       const controller = new AbortController();
   
@@ -148,6 +197,51 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
           if (!controller.signal.aborted) setLoading(false);
         });
   
+      return () => controller.abort();
+    }, []);
+
+    useEffect(() => {
+      if (!canManageCoTeachers) return;
+      const controller = new AbortController();
+      fetch("/api/user?role=teacher", { signal: controller.signal })
+        .then((res) => {
+          if (!res.ok) throw new Error("Не удалось загрузить список преподавателей");
+          return res.json() as Promise<TeacherOption[]>;
+        })
+        .then((data) => {
+          const ownerId =
+            course.teachers.find((teacher) => teacher.role === "owner")?.userId ??
+            (isNew ? userId : null);
+          setPossibleTeachers(
+            data.filter((teacher) => teacher.id !== ownerId),
+          );
+        })
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          console.error(err);
+        });
+      return () => controller.abort();
+    }, [canManageCoTeachers, userId, course.teachers, isNew]);
+    useEffect(() => {
+      const controller = new AbortController();
+      let id = userId;
+      if (course.teachers.find((teacher) => teacher.role === "owner")) {
+        id = course.teachers.find((teacher) => teacher.role === "owner")?.user.id ?? userId;
+      }
+      getUserInfo(controller.signal, id)
+        .then((data) => {
+          setUser(data);
+          if (!data?.signatureId) {
+            setValue("certificateTemplate", null);
+          }
+        })
+        .catch((err: unknown) => {
+          if (err instanceof DOMException && err.name === "AbortError") return;
+          console.error(err);
+        })
+        .finally(() => {
+          if (!controller.signal.aborted) setLoading(false);
+        });
       return () => controller.abort();
     }, []);
     // useLayoutEffect — чтобы черновик применился до отрисовки (важно для id=-1 / type=course)
@@ -321,6 +415,9 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
               tags: values.tags ?? [],
               deadlineDays: values.deadlineDays,
               publishedAt,
+              ...(canManageCoTeachers
+                ? { coTeacherIds: values.coTeacherIds ?? [] }
+                : {}),
               parts: namedParts.map((part, index) => ({
                 ...(part.id != null && part.id > 0 ? { id: part.id } : {}),
                 name: part.name!.trim(),
@@ -546,6 +643,32 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
 
     </div>
  <div className="sm:grid-cols-2 grid gap-4">
+  {canManageCoTeachers && (
+    <Field data-invalid={!!errors.coTeacherIds || undefined} className="sm:col-span-2">
+      <FieldLabel>Соавторы курса</FieldLabel>
+      <InputMultiSelect
+        value={(coTeacherIds ?? []).map(String)}
+        options={possibleTeachers.map((teacher) => ({
+          value: teacher.id.toString(),
+          label: teacherLabel(teacher),
+        }))}
+        placeholder="Выберите соавторов"
+        onValueChange={(value) => {
+          setValue(
+            "coTeacherIds",
+            value.map(Number).filter((id) => Number.isFinite(id) && id > 0),
+            { shouldDirty: true, shouldValidate: true },
+          );
+        }}
+      >
+        {(provided) => <InputMultiSelectTrigger {...provided} />}
+      </InputMultiSelect>
+      <p className="text-muted-foreground text-xs mt-1">
+        Соавторы могут редактировать курс. Добавлять и удалять их может только владелец или администратор.
+      </p>
+      <FieldError errors={[errors.coTeacherIds]} />
+    </Field>
+  )}
       <div className="flex gap-2 items-center">
         <Checkbox
         id="needEnrollment"
@@ -694,9 +817,22 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
       </Field>
       <Field data-invalid={!!errors.certificateTemplate || undefined}>
         <FieldLabel htmlFor="certificateTemplate">Шаблон сертификата</FieldLabel>
+        {!user?.signatureId && (
+          <div className="mt-2">
+            {isOwner ? (<div className="text-sm text-muted-foreground">
+              Для использования шаблона сертификата, необходимо установить подпись <Link href="/user/profile">установить подпись в профиле</Link>
+            </div>) : (<div className="text-sm text-muted-foreground">
+              Подпись не установлена
+            </div>)}
+            <div className="text-sm text-muted-foreground mt-2">
+                Будет использоваться шаблон по умолчанию
+            </div>
+          </div>
+        )}
         {certificateTemplates.length > 0 ? (
         <Select
         value={certificateTemplate ?? ""}
+        disabled={!user?.signatureId}
         onValueChange={(value) => {
           setValue("certificateTemplate", value as string, {
             shouldDirty: true,

@@ -9,6 +9,7 @@ import {
 import { USER_COURSE_STATUS_VALUES } from "@/app/lib/models";
 import { prisma } from "@/app/lib/prisma";
 import { UserCourse } from "@prisma/client";
+import { isCourseCompleted } from "./certificate";
 
 const STUDENT_ALLOWED_STATUSES = ["dropped"] as const;
 const STAFF_ALLOWED_STATUSES = USER_COURSE_STATUS_VALUES;
@@ -635,5 +636,10 @@ export async function updateUserLesson(
     data: updatePayload,
   });
 
-  return findUserLesson(id);
+  const courseCompleted = await isCourseCompleted(record.userId, record.lesson.coursePart.courseId);
+
+  return {
+    ...findUserLesson(id),
+    course_completed: courseCompleted,
+  };
 }

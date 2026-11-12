@@ -33,11 +33,12 @@ function formatDeadline(deadline: Date | string | null) {
   return date.toLocaleDateString("ru-RU");
 }
 
-function isDeadlinePassed(deadline: Date | string | null) {
-  if (!deadline) return false;
-  const date = deadline instanceof Date ? deadline : new Date(deadline);
-  if (Number.isNaN(date.getTime())) return false;
-  return date.getTime() < Date.now();
+function isDeadlinePassed(row: CourseStudentProgressItem): string {
+  if (!row.deadline) return "";
+  const date = row.deadline instanceof Date ? row.deadline : new Date(row.deadline);
+  if (Number.isNaN(date.getTime())) return "";
+  if (row.progress >= 100) return "text-muted-foreground";
+  return date.getTime() < Date.now() ? "text-red-600" : "";
 }
 
 function ProgressCell({ row }: { row: CourseStudentProgressItem }) {
@@ -158,9 +159,7 @@ export default function StudentPointsTable({
                 <ProgressCell row={row} />
               </TableCell>
               <TableCell
-                className={cn(
-                  isDeadlinePassed(row.deadline) && "text-muted-foreground",
-                )}
+                className={isDeadlinePassed(row)}
               >
                 {formatDeadline(row.deadline)}
               </TableCell>

@@ -168,6 +168,7 @@ export default function CourseView() {
                   part.lessons.some((lesson) => lesson.id === openedLessonId),
                 )?.userProgress?.deadline ?? null
               }
+              courseId={courseParts[0].courseId}
               onArrowClick={selectLesson}
               onProgressUpdate={() => {
                 fetchCourse(new AbortController().signal);
