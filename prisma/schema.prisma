@@ -175,6 +175,8 @@ model Course {
   durationSeconds Int          @default(0) @map("duration_seconds")
   deadlineDays    Int?         @map("deadline_days")
   certificateTemplate String?  @map("certificate_template")
+  // Необходимый прогресс для завершения курса
+  certificateProgress Int?     @default(100) @map("certificate_progress")
 
   coverFile          File?                   @relation("CourseCover", fields: [coverFileId], references: [id])
   category           Category?               @relation(fields: [categoryId], references: [id])
@@ -262,6 +264,7 @@ model Lesson {
   manualGrading     Boolean    @default(false) @map("manual_grading")
   /// NULL = без ограничения пересдач
   maxAttempts       Int?       @map("max_attempts")
+  required     Boolean    @default(false)
   createdAt         DateTime   @default(now()) @map("created_at") @db.Timestamptz
   updatedAt         DateTime   @updatedAt @map("updated_at") @db.Timestamptz
   publishedAt     DateTime?    @map("published_at") @db.Timestamptz

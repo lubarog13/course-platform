@@ -10,7 +10,7 @@ import {
 } from "@/app/lib/api";
 import { prisma } from "@/app/lib/prisma";
 
-export type LessonDto = Pick<Lesson, "id" | "name" | "description" | "sortOrder" | "type" | "points" | "durationSeconds"> & {
+export type LessonDto = Pick<Lesson, "id" | "name" | "description" | "sortOrder" | "type" | "points" | "durationSeconds" | "required"> & {
   userProgress?: Pick<UserLesson, "completed" | "points"> | null;
 };
 
@@ -66,6 +66,7 @@ export function coursePartsFromSql(response: any[]): CoursePartDto[] {
         type: item["lesson_type"],
         points: item["lesson_points"],
         durationSeconds: item["lesson_duration_seconds"],
+        required: item["lesson_required"],
         userProgress:
           item["user_completed"] != null || item["user_points"] != null
             ? {

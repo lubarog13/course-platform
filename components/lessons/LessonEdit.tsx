@@ -91,6 +91,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
   const reviewEnabled = useWatch({ control, name: "reviewEnabled" });
   const manualGrading = useWatch({ control, name: "manualGrading" });
   const maxAttempts = useWatch({ control, name: "maxAttempts" });
+  const required = useWatch({ control, name: "required" });
   const openedLessonId = useRef<number | null>(null);
   const [courseParts, setCourseParts] = useState<CoursePartExtendedDto[]>([]);
   const [loading, setLoading] = useState(true);
@@ -322,6 +323,11 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
             coursePartId: values.coursePartId,
             sortOrder: values.sortOrder,
             durationSeconds,
+            required: required,
+            manualGrading: manualGrading,
+            maxAttempts: maxAttempts,
+            reviewEnabled: reviewEnabled,
+            passingScore: values.passingScore ?? null,
             attachmentId: values.attachment?.id ?? null,
             ...(values.type === "video" ? { videoId } : {}),
             ...(values.type === "test"
@@ -724,6 +730,21 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
                 }}
               />
                             <Label htmlFor="lesson-manual-grading">Проверка преподавателем</Label>
+
+              </div>
+              <div className="flex items-center gap-2">
+              <Checkbox
+                id="lesson-required"
+                aria-invalid={!!errors.required}
+                checked={required === true}
+                onCheckedChange={(checked) => {
+                  setValue("required", checked === true, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                }}
+              />
+                            <Label htmlFor="lesson-required">Обязательный урок</Label>
 
               </div>
             <div className="flex items-center gap-2">

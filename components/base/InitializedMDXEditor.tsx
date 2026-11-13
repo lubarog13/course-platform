@@ -1,6 +1,7 @@
 "use client";
 
 import type { ForwardedRef } from "react";
+import { useTheme } from "next-themes";
 import {
   MDXEditor,
   type MDXEditorMethods,
@@ -68,18 +69,22 @@ export default function InitializedMDXEditor({
   markdown,
   ...props
 }: { editorRef: ForwardedRef<MDXEditorMethods> | null } & MDXEditorProps) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === "dark";
+
   return (
     <MDXEditor
       plugins={lessonEditorPlugins}
       translation={translation}
       className={[
-        "lesson-mdx-editor rounded-xl border border-border bg-background",
+        "lesson-mdx-editor mdxeditor rounded-xl border border-border bg-background text-foreground",
+        isDark ? "dark-theme dark" : "light-theme",
         className,
       ]
         .filter(Boolean)
         .join(" ")}
       contentEditableClassName={[
-        "prose prose-sm dark:prose-invert max-w-none min-h-[320px] px-4 py-3",
+        "prose prose-sm dark:prose-invert max-w-none min-h-[320px] px-4 py-3 text-foreground",
         contentEditableClassName,
       ]
         .filter(Boolean)

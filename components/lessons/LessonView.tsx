@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { LessonFullDto } from "@/app/lib/lessons";
 import { LessonDto } from "@/app/lib/courseParts";
 import { Button } from "../ui/button";
-import { ArrowLeftIcon, ArrowRightIcon, EditIcon, FileIcon } from "lucide-react";
+import { ArrowLeftIcon, ArrowRightIcon, Ban, CheckCircleIcon, EditIcon, FileIcon, RefreshCcwIcon } from "lucide-react";
 import MarkdownContent from "../base/MarkdownContent";
 import TestView from "./TestView";
 import AttemptsList from "./AttemtsList";
@@ -14,7 +14,9 @@ import Loading from "../layout/loading";
 import { useRouter } from "next/navigation";
 import type { UserLesson } from "@prisma/client";
 import CommentList from "../comments/CommentList";
+import { AlertCircleIcon } from "lucide-react";
 import CertificateModal from "../certificates/CertificateModal";
+import { cn } from "@/lib/utils";
 
 type LessonViewProps = {
   courseId: number;
@@ -66,6 +68,17 @@ export default function LessonView({
   const flushedRef = useRef(false);
   const lessonTypeRef = useRef<string | null>(null);
   const videoProgressRef = useRef(0);
+  const deadlineDate = partDeadline
+  ? partDeadline instanceof Date
+    ? partDeadline
+    : new Date(partDeadline)
+  : null;
+const deadlineValid =
+  deadlineDate != null && !Number.isNaN(deadlineDate.getTime())
+    ? deadlineDate
+    : null;
+const isDeadlinePassed =
+  deadlineValid != null && deadlineValid.getTime() < Date.now();
 
   const updateLessonProgress = useCallback(
     async ({
@@ -319,6 +332,24 @@ export default function LessonView({
         </div>
       </div>
       <div className="flex-1 p-6 relative">
+        {lesson.required && (
+          <div className={cn("flex items-center gap-2 text-gray-700 dark:text-gray-300 mb-4 rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-sm", lesson.userProgress?.completed ? "border-green-500/30 bg-green-500/5" : "border-yellow-500/30 bg-yellow-500/5",
+            canEdit? 'mt-8' : ''
+          )}>
+            {lesson.userProgress?.completed ? <CheckCircleIcon className="w-4 h-4 text-green-500" /> : <AlertCircleIcon className="w-4 h-4 text-yellow-500" />}
+            <span>Этот урок является обязательным для прохождения</span>
+          </div>
+        )}
+        {isDeadlinePassed && (
+          <div className="text-gray-700 dark:text-gray-300 mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
+            <Ban className="w-4 h-4 text-destructive" />
+            <span>Срок прохождения истёк {deadlineValid?.toLocaleString("ru-RU")}</span>
+            <Button variant="outline" className="text-destructive hover:text-destructive/80">
+              <RefreshCcwIcon className="w-4 h-4" />
+              <span>Сбросить срок сдачи</span>
+            </Button>
+          </div>
+        )}
         <div className="text-gray-700 dark:text-gray-300 mb-4">{lesson.description}</div>
         {lesson.attachment && (
           <div className="flex items-center gap-2">

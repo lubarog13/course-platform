@@ -39,6 +39,7 @@ const nullableNumber = z.preprocess((value) => {
     tags: z.array(z.string()).optional(),
     deadlineDays: nullableNumber,
     publishedAt: z.date().nullable(),
+    certificateProgress: nullableNumber,
     certificateTemplate: z.string().optional().nullable(),
     /** ID пользователей с ролью co_teacher (без owner) */
     coTeacherIds: z.array(z.number().int().positive()).default([]),
@@ -48,6 +49,13 @@ const nullableNumber = z.preprocess((value) => {
         code: "custom",
         path: ["deadlineDays"],
         message: "Срок сдачи не может быть отрицательным",
+      });
+    }
+    if (data.certificateProgress != null && (Number.isNaN(data.certificateProgress) || data.certificateProgress < 0 || data.certificateProgress > 100)) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["certificateProgress"],
+        message: "Необходимый прогресс для завершения курса должен быть от 0 до 100",
       });
     }
 
@@ -88,7 +96,8 @@ const nullableNumber = z.preprocess((value) => {
       deadlineDays: course.deadlineDays,
       publishedAt: course.publishedAt ? new Date(course.publishedAt) : null,
       certificateTemplate: course.certificateTemplate ?? undefined,
-      coTeacherIds: (course.teachers ?? [])
+      certificateProgress: course.certificateProgress ?? null,
+        coTeacherIds: (course.teachers ?? [])
         .filter((teacher) => teacher.role === "co_teacher")
         .map((teacher) => teacher.userId),
     };

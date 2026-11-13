@@ -9,10 +9,12 @@ export async function POST(request: NextRequest) {
     if (!session?.user) {
         return jsonError("Не авторизован", 401);
     }
-    // ToDo - добавить проверку, что пользователь закончил курс
     const { courseId, userId } = await request.json();
     if (typeof courseId !== "number" || typeof userId !== "number") {
         return jsonError("Некорректные данные", 400);
+    }
+    if (Number(session.user.id) !== userId && session.user.role !== "admin") {
+        return jsonError("Нет доступа к генерации сертификата", 403);
     }
     try {
         const certificate = await generateCertificate(courseId, userId);
@@ -20,7 +22,10 @@ export async function POST(request: NextRequest) {
     } catch (error) {
         console.error(error);
         if (error instanceof Error && error.cause === "not_found") {
-            return jsonError("Курс или пользователь не найден", 400);
+            return jsonError(error.message || "Курс или пользователь не найден", 404);
+        }
+        if (error instanceof Error && error.cause === "no_access") {
+            return jsonError(error.message, 403);
         }
         if (error instanceof Error && error.cause === "generate") {
             return jsonError("Ошибка при генерации сертификата", 500);

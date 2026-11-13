@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
           manualGrading: data.manualGrading ?? false,
           maxAttempts: data.maxAttempts,
           publishedAt: data.published ? new Date() : null,
+          required: data.required ?? false,
         },
       });
 

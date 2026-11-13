@@ -34,6 +34,7 @@ function createDefaultLesson(overrides?: Partial<LessonFullDto>): LessonFullDto 
     manualGrading: false,
     maxAttempts: null,
     publishedAt: null,
+    required: false,
     deletedAt: null,
     createdAt: new Date(0),
     updatedAt: new Date(0),
@@ -65,6 +66,7 @@ function createDefaultCourse(): CourseFullDto {
     ratingCount: 0,
     courseParts: [],
     certificateTemplate: null,
+    certificateProgress: 100,
   };
 }
 
@@ -210,7 +212,9 @@ export default function EditorView({ certificateTemplates }: { certificateTempla
           isNew={course.id < 1}
           onSaved={(saved) => {
             setCourse(saved);
-            if (saved.id > 0) {
+            // Не делаем replace при том же courseId — иначе effect
+            // сбрасывает курс и CourseEdit теряет статус «Сохранено».
+            if (saved.id > 0 && saved.id !== courseId) {
               router.replace(`/editor?courseId=${saved.id}`);
             }
           }}

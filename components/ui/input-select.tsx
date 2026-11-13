@@ -306,7 +306,7 @@ export const InputSelectTrigger = React.forwardRef<
       >
         {selectedValue && selectedOption ? (
           <div className="flex items-center justify-between w-full">
-            <div className="flex flex-wrap items-center px-2">
+            <div className="flex flex-wrap items-center px-2 w-full overflow-hidden">
               {children ? (
                 children(selectedOption)
               ) : (

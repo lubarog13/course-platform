@@ -422,7 +422,9 @@ export type CourseWriteData = {
   tags?: string[];
   deadlineDays?: number | null;
   publishedAt?: Date | null;
+  certificateTemplate?: string | null;
   parts?: CoursePartWriteInput[];
+  certificateProgress?: number | null;
   /** ID соавторов (co_teacher). Owner не передаётся и не меняется здесь. */
   coTeacherIds?: number[];
 };
@@ -507,8 +509,13 @@ export function parseCourseBody(body: unknown, mode: "create" | "update"): Cours
   const tags = asTags(raw.tags);
   const deadlineDays = asOptionalIntField(raw.deadlineDays, "deadlineDays", 0);
   const publishedAt = asPublishedAt(raw.publishedAt);
+  const certificateTemplate = asOptionalString(
+    raw.certificateTemplate,
+    "certificateTemplate",
+  );
   const parts = asCourseParts(raw.parts);
   const coTeacherIds = asCoTeacherIds(raw.coTeacherIds);
+  const certificateProgress = asOptionalIntField(raw.certificateProgress, "certificateProgress", 0);
 
   if (description && description.length > 10000) {
     throw new Error("Описание курса не может быть больше 10000 символов", {cause: "invalid"});
@@ -528,9 +535,12 @@ export function parseCourseBody(body: unknown, mode: "create" | "update"): Cours
     ...(coverFileId !== undefined ? { coverFileId } : {}),
     ...(categoryId !== undefined ? { categoryId } : {}),
     ...(tags !== undefined ? { tags } : {}),
+    ...(deadlineDays !== undefined ? { deadlineDays } : {}),
     ...(publishedAt !== undefined ? { publishedAt } : {}),
+    ...(certificateTemplate !== undefined ? { certificateTemplate } : {}),
     ...(parts !== undefined ? { parts } : {}),
     ...(coTeacherIds !== undefined ? { coTeacherIds } : {}),
+    ...(certificateProgress !== undefined ? { certificateProgress } : {}),
   };
 }
 

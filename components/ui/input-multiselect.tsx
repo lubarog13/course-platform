@@ -331,7 +331,7 @@ export const InputMultiSelectTrigger = React.forwardRef<
       >
         {selectedValue.length > 0 ? (
           <div className="flex items-center justify-between w-full">
-            <div className="flex flex-wrap items-center px-1">
+            <div className="flex flex-wrap items-center px-1 w-full overflow-hidden">
               {selectedValue.slice(0, truncateCount).map((value, index) => {
                 const option =
                   options.find((item) => item.value === value) ?? {

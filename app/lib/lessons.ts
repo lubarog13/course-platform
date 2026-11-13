@@ -171,6 +171,7 @@ export type LessonWriteData = {
   passingScore?: number | null;
   reviewEnabled?: boolean;
   manualGrading?: boolean;
+  required?: boolean;
   maxAttempts?: number | null;
   published?: boolean;
   testQuestions?: NestedTestQuestionWrite[];
@@ -275,6 +276,9 @@ export function parseLessonBody(
       : {}),
     ...(asBoolean(raw.manualGrading, "manualGrading") !== undefined
       ? { manualGrading: asBoolean(raw.manualGrading, "manualGrading") }
+      : {}),
+    ...(asBoolean(raw.required, "required") !== undefined
+      ? { required: asBoolean(raw.required, "required") }
       : {}),
     ...(asOptionalInt(raw.maxAttempts, "maxAttempts", 1) !== undefined
       ? { maxAttempts: asOptionalInt(raw.maxAttempts, "maxAttempts", 1) }
@@ -947,6 +951,7 @@ export async function startTestAttempt(lessonId: number, userId: number) {
       id: true,
       type: true,
       maxAttempts: true,
+      required: true,
       timeLimitSeconds: true,
       coursePartId: true,
     },

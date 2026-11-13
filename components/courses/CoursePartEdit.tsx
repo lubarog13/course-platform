@@ -6,7 +6,7 @@ import { Resolver, useForm } from "react-hook-form";
 import { useEffect, useState } from "react";
 import { Item, ItemContent, ItemTitle, ItemActions } from "@/components/ui/item";
 import { Button } from "@/components/ui/button";
-import { PencilIcon } from "lucide-react";
+import { PencilIcon, SquareArrowRightExitIcon, SquareArrowUpRightIcon } from "lucide-react";
 import { TrashIcon } from "lucide-react";
 import { useSortable } from "@dnd-kit/react/sortable";
 import type { CoursePartEditData } from "@/app/lib/courseParts";
@@ -63,6 +63,10 @@ export default function CoursePartEdit({ part, index, onSaved, onDeleted }: { pa
           return;
         }
       };
+
+      const openEditLesson = () => {
+        window.open(`/editor?type=lesson&coursePartId=${part.id}`, "_blank");
+      };
   return (
     <>
     {isEditing ? (
@@ -117,6 +121,9 @@ export default function CoursePartEdit({ part, index, onSaved, onDeleted }: { pa
             </Button>
             <Button type="button" variant="ghost" size="icon" onClick={() => onDeleted(part)}>
               <TrashIcon className="w-4 h-4 text-muted-foreground" />
+            </Button>
+            <Button className="text-blue-500 border-blue-500" type="button" variant="outline" onClick={() => openEditLesson()}>
+              Добавить урок <SquareArrowUpRightIcon className="size-4" />
             </Button>
           </ItemActions>
         </Item>

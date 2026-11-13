@@ -8,12 +8,11 @@ import { signUpAction, updateUserAction } from "@/app/lib/auth/actions";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useState, type Ref } from "react";
+import { useEffect, useState, type Ref } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { Loader2, XIcon } from "lucide-react";
 import { IMaskMixin } from "react-imask";
 import Link from "next/link";
-import { User } from "@prisma/client";
 import { UserDetails, UserWithAgreement } from "@/app/lib/models";
 import { useSession } from "next-auth/react";
 import { toast } from "../ui/toast";
@@ -28,6 +27,18 @@ import {
 } from "@/components/ui/select";
 import { Switch } from "../ui/switch";
 
+function filePublicUrl(file: Pick<FileModel, "url">) {
+  const filename =
+    typeof file.url === "string" ? file.url.split(/[/\\]/).pop() : undefined;
+  return filename ? `/api/uploads/${encodeURIComponent(filename)}` : null;
+}
+
+function scrollToTop() {
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth",
+  });
+}
 
 /** IMask даёт inputRef — прокидываем в наш Input как ref */
 const PhoneInput = IMaskMixin(({ inputRef, ...props }) => (
@@ -61,6 +72,9 @@ export function SignupForm({
   const userRole = session?.user?.role;
   const adminEdit = userRole === "admin";
   const teacherEdit = userRole === "teacher";
+  const [saved, setSaved] = useState(false);
+  const [signatureFile, setSignatureFile] = useState<FileModel | null>(null);
+  const [signatureLoading, setSignatureLoading] = useState(false);
   const form = useForm<z.infer<typeof signUpSchema>>({
     resolver: zodResolver(signUpSchema),
     defaultValues: {
@@ -74,11 +88,54 @@ export function SignupForm({
       phone: user?.phone ?? null,
       userDetails: (user?.userDetails as UserDetails | null) ?? null,
       role: user?.role ?? "student",
-      acceptEmailNotifications: user?.agreement.accept_email_notifications ?? true,
-      acceptEmailPromotions: user?.agreement.accept_email_promotions ?? true,
+      acceptEmailNotifications: user?.agreement?.accept_email_notifications ?? true,
+      acceptEmailPromotions: user?.agreement?.accept_email_promotions ?? true,
       signatureId: user?.signatureId ?? null,
     },
   });
+
+  const signatureId = form.watch("signatureId");
+
+  const resolveSignatureFile = async (
+    id: number,
+    signal: AbortSignal,
+  ): Promise<FileModel | null> => {
+    const res = await fetch(`/api/file/${id}`, { signal });
+    if (!res.ok) {
+      if (res.status === 404) return null;
+      throw new Error("Не удалось загрузить файл подписи");
+    }
+    return (await res.json()) as FileModel;
+  };
+
+  useEffect(() => {
+    if (!editMode || !signatureId) {
+      setSignatureFile(null);
+      setSignatureLoading(false);
+      return;
+    }
+    if (signatureFile?.id === signatureId) return;
+
+    const abortController = new AbortController();
+    setSignatureLoading(true);
+    resolveSignatureFile(signatureId, abortController.signal)
+      .then((file) => {
+        if (!abortController.signal.aborted) setSignatureFile(file);
+      })
+      .catch((err: unknown) => {
+        if (abortController.signal.aborted) return;
+        setSignatureFile(null);
+        const message =
+          err instanceof Error ? err.message : "Не удалось загрузить файл подписи";
+        setError(message);
+      })
+      .finally(() => {
+        if (!abortController.signal.aborted) setSignatureLoading(false);
+      });
+
+    return () => abortController.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload only when signatureId changes
+  }, [editMode, signatureId]);
 
   async function onSubmit(values: z.infer<typeof signUpSchema>) {
     setIsLoading(true);
@@ -113,6 +170,8 @@ export function SignupForm({
         router.push("/login?registered=1");
         router.refresh();
       }
+      setSaved(true);
+      scrollToTop();
     } catch {
       setError(
         editMode
@@ -129,8 +188,13 @@ export function SignupForm({
   return (
     <>
       {error && (
-        <p className="text-destructive rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
+        <p className="mb-4 text-destructive rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
           {error}
+        </p>
+      )}
+      {saved && (
+        <p className="mb-4 text-green-500 rounded-lg border border-green-500/30 bg-green-500/5 px-3 py-2 text-sm">
+          Данные успешно сохранены
         </p>
       )}
       <form
@@ -200,20 +264,6 @@ export function SignupForm({
             />
             <FieldError message={errors.phone?.message} />
           </Field>
-          {editMode && (adminEdit || teacherEdit) && (
-        <Field>
-          <FieldLabel>Подпись для сертификата</FieldLabel>
-          <FieldDescription>Прикрепите файл с подписью в формате svg. Если вы не хотите использовать подпись, оставьте поле пустым, тогда будет использоваться стандартная подпись платформы.</FieldDescription>
-          <FileUploader
-            onUploaded={(files: FileModel[]) => {
-              form.setValue("signatureId", files[0]?.id ?? null);
-            }}
-            accept={{
-              "image/svg+xml": [".svg"],
-            }}
-          />
-        </Field>
-      )}
           <Field>
             <FieldLabel htmlFor="email">
               Email <span className="text-destructive">*</span>
@@ -227,6 +277,56 @@ export function SignupForm({
             />
             <FieldError message={errors.email?.message} />
           </Field>
+          {editMode && (adminEdit || teacherEdit) && (
+        <Field className="sm:col-span-2">
+          <FieldLabel>Подпись для сертификата</FieldLabel>
+          <FieldDescription>Прикрепите файл с подписью в формате svg. Если вы не хотите использовать подпись, оставьте поле пустым, тогда будет использоваться стандартная подпись платформы.</FieldDescription>
+          {signatureLoading ? (
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="size-4 animate-spin" />
+              Загрузка подписи…
+            </div>
+          ) : signatureFile ? (
+            <div className="relative flex items-center gap-3 rounded-lg border px-3 py-2">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={filePublicUrl(signatureFile) ?? ""}
+                alt={signatureFile.originalName ?? "Подпись"}
+                className="h-16 w-auto max-w-full object-contain bg-white"
+              />
+              <span className="truncate text-sm text-muted-foreground">
+                {signatureFile.originalName}
+              </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="size-8 absolute top-1 right-1"
+                onClick={() => {
+                  setSignatureFile(null);
+                  form.setValue("signatureId", null, { shouldDirty: true });
+                }}
+              >
+                <XIcon className="size-4" />
+                <span className="sr-only">Удалить подпись</span>
+              </Button>
+            </div>
+          ) : (
+            <FileUploader
+              onUploaded={(files: FileModel[]) => {
+                const file = files[0] ?? null;
+                setSignatureFile(file);
+                form.setValue("signatureId", file?.id ?? null, {
+                  shouldDirty: true,
+                });
+              }}
+              accept={{
+                "image/svg+xml": [".svg"],
+              }}
+            />
+          )}
+        </Field>
+      )}
           {!editMode && (
             <>
               <Field>

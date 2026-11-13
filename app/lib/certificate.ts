@@ -253,6 +253,25 @@ export async function generateCertificate(courseId: number, userId: number) {
       throw new Error("Студент не записан на курс", { cause: "not_found" });
     }
 
+    const eligibility = await getCertificateEligibility(userId, courseId);
+    if (!eligibility.eligible) {
+      const reasons: string[] = [];
+      if (eligibility.progress < eligibility.threshold) {
+        reasons.push(
+          `прогресс ${eligibility.progress}% из ${eligibility.threshold}% (${eligibility.completedCount}/${eligibility.totalLessons} уроков)`,
+        );
+      }
+      if (!eligibility.requiredCompleted) {
+        reasons.push(
+          `обязательные уроки: ${eligibility.completedRequiredCount}/${eligibility.totalRequired}`,
+        );
+      }
+      throw new Error(
+        `Не выполнены условия для сертификата: ${reasons.join("; ")}`,
+        { cause: "no_access" },
+      );
+    }
+
     const issuedAt = enrollment.certificate?.issuedAt ?? new Date();
     
     const signatureId = enrollment.course.instructors.find((instructor) => instructor.role === "owner" && instructor.user.signatureId !== null)?.user.signatureId ?? null;
@@ -310,7 +329,9 @@ export async function generateCertificate(courseId: number, userId: number) {
   } catch (error) {
     if (
       error instanceof Error &&
-      (error.cause === "not_found" || error.cause === "generate")
+      (error.cause === "not_found" ||
+        error.cause === "generate" ||
+        error.cause === "no_access")
     ) {
       throw error;
     }
@@ -331,12 +352,36 @@ export type CompletedCourseDto = Course & {
   hasCertificate: boolean;
 };
 
-type CourseLessonRef = { id: number; type: string };
+export type CertificateEligibility = {
+  eligible: boolean;
+  /** Процент по всем урокам курса */
+  progress: number;
+  threshold: number;
+  completedCount: number;
+  totalLessons: number;
+  /** Все обязательные уроки пройдены */
+  requiredCompleted: boolean;
+  completedRequiredCount: number;
+  totalRequired: number;
+};
+
+type CourseLessonRef = {
+  id: number;
+  type: string;
+  required: boolean;
+};
+
+type CourseProgressSource = {
+  certificateProgress: number | null;
+  parts: Array<{
+    lessons: CourseLessonRef[];
+  }>;
+};
 
 async function loadLessonCompletionMaps(userId: number, lessonIds: number[]) {
   if (lessonIds.length === 0) {
     return {
-      pointsByLesson: new Map<number, number>(),
+      completedLessons: new Set<number>(),
       testsPassed: new Set<number>(),
     };
   }
@@ -344,52 +389,166 @@ async function loadLessonCompletionMaps(userId: number, lessonIds: number[]) {
   const [progressRows, attemptRows] = await Promise.all([
     prisma.userLesson.findMany({
       where: { userId, lessonId: { in: lessonIds } },
-      select: { lessonId: true, points: true },
+      select: { lessonId: true, completed: true, points: true },
     }),
     prisma.testAttempt.findMany({
       where: {
         userId,
         lessonId: { in: lessonIds },
         submittedAt: { not: null },
-        score: { not: null },
-        maxScore: { not: null },
+        OR: [
+          { passed: true },
+          {
+            score: { not: null },
+            maxScore: { not: null },
+          },
+        ],
       },
-      select: { lessonId: true, score: true, maxScore: true },
+      select: { lessonId: true, score: true, maxScore: true, passed: true },
     }),
   ]);
 
-  const pointsByLesson = new Map(
-    progressRows.map((row) => [row.lessonId, row.points]),
-  );
-  const testsPassed = new Set<number>();
-  for (const attempt of attemptRows) {
-    if (
-      attempt.score != null &&
-      attempt.maxScore != null &&
-      attempt.score >= attempt.maxScore
-    ) {
-      testsPassed.add(attempt.lessonId);
+  const completedLessons = new Set<number>();
+  for (const row of progressRows) {
+    if (row.completed || row.points > 0) {
+      completedLessons.add(row.lessonId);
     }
   }
 
-  return { pointsByLesson, testsPassed };
+  const testsPassed = new Set<number>();
+  for (const attempt of attemptRows) {
+    if (
+      attempt.passed === true ||
+      (attempt.score != null &&
+        attempt.maxScore != null &&
+        attempt.maxScore > 0 &&
+        attempt.score >= attempt.maxScore)
+    ) {
+      testsPassed.add(attempt.lessonId);
+      completedLessons.add(attempt.lessonId);
+    }
+  }
+
+  return { completedLessons, testsPassed };
 }
 
-function areLessonsCompleted(
-  lessons: CourseLessonRef[],
-  pointsByLesson: Map<number, number>,
+function isLessonCompleted(
+  lesson: CourseLessonRef,
+  completedLessons: Set<number>,
   testsPassed: Set<number>,
 ) {
-  if (lessons.length === 0) return false;
-  return lessons.every((lesson) => {
-    if (lesson.type === "test") {
-      return testsPassed.has(lesson.id);
-    }
-    return (pointsByLesson.get(lesson.id) ?? 0) > 0;
-  });
+  if (lesson.type === "test") {
+    return testsPassed.has(lesson.id) || completedLessons.has(lesson.id);
+  }
+  return completedLessons.has(lesson.id);
 }
 
-/** Пройден ли конкретный курс пользователем. */
+function evaluateCertificateEligibility(
+  course: CourseProgressSource,
+  completedLessons: Set<number>,
+  testsPassed: Set<number>,
+): CertificateEligibility {
+  const allLessons = course.parts.flatMap((part) => part.lessons);
+  const requiredLessons = allLessons.filter((lesson) => lesson.required);
+  const threshold = Math.min(
+    100,
+    Math.max(0, course.certificateProgress ?? 100),
+  );
+
+  if (allLessons.length === 0) {
+    return {
+      eligible: false,
+      progress: 0,
+      threshold,
+      completedCount: 0,
+      totalLessons: 0,
+      requiredCompleted: requiredLessons.length === 0,
+      completedRequiredCount: 0,
+      totalRequired: 0,
+    };
+  }
+
+  const completedCount = allLessons.filter((lesson) =>
+    isLessonCompleted(lesson, completedLessons, testsPassed),
+  ).length;
+  const completedRequiredCount = requiredLessons.filter((lesson) =>
+    isLessonCompleted(lesson, completedLessons, testsPassed),
+  ).length;
+  const progress = Math.round((completedCount / allLessons.length) * 100);
+  const requiredCompleted =
+    requiredLessons.length === 0 ||
+    completedRequiredCount === requiredLessons.length;
+
+  return {
+    eligible: progress >= threshold && requiredCompleted,
+    progress,
+    threshold,
+    completedCount,
+    totalLessons: allLessons.length,
+    requiredCompleted,
+    completedRequiredCount,
+    totalRequired: requiredLessons.length,
+  };
+}
+
+const courseProgressInclude = {
+  parts: {
+    where: { deletedAt: null },
+    include: {
+      lessons: {
+        where: { deletedAt: null },
+        select: { id: true, type: true, required: true },
+      },
+    },
+  },
+} as const;
+
+/**
+ * Прогресс по всем урокам + обязательные уроки.
+ * Сертификат: progress >= certificateProgress И все required пройдены.
+ */
+export async function getCertificateEligibility(
+  userId: number,
+  courseId: number,
+): Promise<CertificateEligibility> {
+  const course = await prisma.course.findFirst({
+    where: { id: courseId, deletedAt: null },
+    select: {
+      certificateProgress: true,
+      ...courseProgressInclude,
+    },
+  });
+
+  if (!course) {
+    return {
+      eligible: false,
+      progress: 0,
+      threshold: 100,
+      completedCount: 0,
+      totalLessons: 0,
+      requiredCompleted: false,
+      completedRequiredCount: 0,
+      totalRequired: 0,
+    };
+  }
+
+  const lessons = course.parts.flatMap((part) => part.lessons);
+  const { completedLessons, testsPassed } = await loadLessonCompletionMaps(
+    userId,
+    lessons.map((lesson) => lesson.id),
+  );
+
+  return evaluateCertificateEligibility(
+    course,
+    completedLessons,
+    testsPassed,
+  );
+}
+
+/**
+ * Курс пройден до порога сертификата, сертификат ещё не выдан
+ * (для уведомления «доступен сертификат»).
+ */
 export async function isCourseCompleted(
   userId: number,
   courseId: number,
@@ -400,40 +559,17 @@ export async function isCourseCompleted(
       courseId,
       course: { deletedAt: null },
     },
-    include: {
-      certificate: true,
-      course: {
-        include: {
-          parts: {
-            where: { deletedAt: null },
-            include: {
-              lessons: {
-                where: { deletedAt: null },
-                select: { id: true, type: true },
-              },
-            },
-          },
-        },
-      },
-    },
+    select: { certificate: { select: { id: true } } },
   });
 
-  if (!enrollment) return false;
+  if (!enrollment || enrollment.certificate != null) return false;
 
-  const lessons = enrollment.course.parts.flatMap((part) => part.lessons);
-  const lessonIds = lessons.map((lesson) => lesson.id);
-  const { pointsByLesson, testsPassed } = await loadLessonCompletionMaps(
-    userId,
-    lessonIds,
-  );
-
-  return areLessonsCompleted(lessons, pointsByLesson, testsPassed) && enrollment.certificate === null;
+  const eligibility = await getCertificateEligibility(userId, courseId);
+  return eligibility.eligible;
 }
 
 /**
- * Курсы, которые пользователь полностью прошёл:
- * - тест: есть попытка со score >= maxScore
- * - остальные уроки: UserLesson.points > 0
+ * Курсы, где progress >= certificateProgress и все required-уроки пройдены.
  */
 export async function getCompletedCourses(
   userId: number,
@@ -446,16 +582,28 @@ export async function getCompletedCourses(
     include: {
       certificate: { select: { id: true } },
       course: {
-        include: {
-          parts: {
-            where: { deletedAt: null },
-            include: {
-              lessons: {
-                where: { deletedAt: null },
-                select: { id: true, type: true },
-              },
-            },
-          },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          description: true,
+          language: true,
+          level: true,
+          needEnrollment: true,
+          coverFileId: true,
+          categoryId: true,
+          rating: true,
+          ratingCount: true,
+          publishedAt: true,
+          createdAt: true,
+          updatedAt: true,
+          deletedAt: true,
+          tags: true,
+          durationSeconds: true,
+          deadlineDays: true,
+          certificateTemplate: true,
+          certificateProgress: true,
+          ...courseProgressInclude,
         },
       },
     },
@@ -467,15 +615,19 @@ export async function getCompletedCourses(
     ),
   );
 
-  const { pointsByLesson, testsPassed } = await loadLessonCompletionMaps(
+  const { completedLessons, testsPassed } = await loadLessonCompletionMaps(
     userId,
     lessonIds,
   );
 
   return enrollments
     .filter((enrollment) => {
-      const lessons = enrollment.course.parts.flatMap((part) => part.lessons);
-      return areLessonsCompleted(lessons, pointsByLesson, testsPassed);
+      const eligibility = evaluateCertificateEligibility(
+        enrollment.course,
+        completedLessons,
+        testsPassed,
+      );
+      return eligibility.eligible;
     })
     .map(({ certificate, course: { parts: _parts, ...course } }) => ({
       ...course,

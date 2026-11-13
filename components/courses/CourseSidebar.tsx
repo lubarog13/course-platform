@@ -1,7 +1,7 @@
 "use client";
 import { CoursePartDto } from "@/app/lib/courseParts";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { ChevronDown, PlusCircle } from "lucide-react";
+import { AlertCircleIcon, ChevronDown, PlusCircle } from "lucide-react";
 import { useEffect, useState } from "react";
 import { LessonDto } from "@/app/lib/courseParts";
 import { useRouter } from "next/navigation";
@@ -74,8 +74,10 @@ export default function CourseSidebar({courseParts, courseName, openedLessonId, 
                                 <div className="flex flex-col gap-2 mt-4">
                                     {coursePart.lessons.map((lesson) => (
                                         <Item className="cursor-pointer items-start" key={lesson.id} onClick={() => onLessonClick(lesson.id)}>
-                                            <ItemMedia variant="icon">
+                                            <ItemMedia variant="icon" className="flex flex-col gap-2">
                                                 {lessonIcon(lesson)}
+                                                {lesson.required && !lesson && <AlertCircleIcon className="w-4 h-4 text-yellow-500" />}
+
                                             </ItemMedia>
                                             <ItemContent>
                                                 <ItemTitle className={lesson.id === openedLessonId ? 'font-bold' : ''}>{lesson.name}</ItemTitle>

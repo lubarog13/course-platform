@@ -19,7 +19,7 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ForwardRefEditor } from "../base/ForwardRefEditor";
-import { PlusIcon, XIcon } from "lucide-react";
+import { CircleQuestionMark, PlusIcon, XIcon } from "lucide-react";
 import FileUploader from "@/components/base/FileUploader";
 import type { File as FileModel } from "@/app/lib/models";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -34,6 +34,7 @@ import CoursePartEdit from "./CoursePartEdit";
 import type { User } from "@/app/lib/models";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 type TeacherOption = {
   id: number;
@@ -280,7 +281,8 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
         setCourseParts(course.courseParts ?? []);
         setCoursePartsChanged(false);
         setDraftRestoredAt(null);
-        setSavedAt(null);
+        // Не сбрасываем savedAt при обновлении того же курса после save —
+        // иначе снова показывается «ещё не сохранялись».
         setError(null);
       }, [course, reset, userId]);
     useEffect(() => {
@@ -399,6 +401,13 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
           }
         }
 
+        const publishedAtValue =
+          values.publishedAt instanceof Date
+            ? values.publishedAt
+            : values.publishedAt
+              ? new Date(values.publishedAt)
+              : publishedAt;
+
         const response = await fetch(
           creating ? "/api/course" : `/api/course/${currentId}`,
           {
@@ -414,7 +423,11 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
               categoryId: resolvedCategoryId,
               tags: values.tags ?? [],
               deadlineDays: values.deadlineDays,
-              publishedAt,
+              certificateProgress: values.certificateProgress ?? null,
+              certificateTemplate: values.certificateTemplate ?? null,
+              publishedAt: publishedAtValue
+                ? publishedAtValue.toISOString()
+                : null,
               ...(canManageCoTeachers
                 ? { coTeacherIds: values.coTeacherIds ?? [] }
                 : {}),
@@ -460,8 +473,14 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
     const publishCourse = async () => {
       const nextPublishedAt = new Date();
       setPublishedAt(nextPublishedAt);
-      setValue("publishedAt", nextPublishedAt, { shouldDirty: true });
-      await form.handleSubmit(onSubmit)();
+      setValue("publishedAt", nextPublishedAt, {
+        shouldDirty: true,
+        shouldValidate: true,
+      });
+      // Передаём дату явно: setState ещё не успел обновить publishedAt в замыкании onSubmit.
+      await form.handleSubmit((values) =>
+        onSubmit({ ...values, publishedAt: nextPublishedAt }),
+      )();
     };
 
     useHotkeys("ctrl+s", (event) => {
@@ -533,7 +552,9 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
                   ? `Сохранено в ${savedAt.toLocaleTimeString("ru-RU")}`
                   : draftRestoredAt
                     ? `Восстановлен черновик от ${draftRestoredAt.toLocaleTimeString("ru-RU")}`
-                    : "Изменения ещё не сохранялись"}
+                    : course.id > 0
+                      ? `Сохранено · ${new Date(course.updatedAt).toLocaleString("ru-RU")}`
+                      : "Изменения ещё не сохранялись"}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -543,9 +564,10 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
               saving ||
               (!isDirty && !coursePartsChanged && !draftRestoredAt)
             }
-          >            {saving ? "Сохранение…" : "Сохранить"}
+          >
+            {saving ? "Сохранение…" : "Сохранить"}
           </Button>
-          {savedAt && !isDirty && (
+          {course.id > 0 && !isDirty && !coursePartsChanged && (
             <Button
               variant="secondary"
               type="button"
@@ -644,9 +666,10 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
     </div>
  <div className="sm:grid-cols-2 grid gap-4">
   {canManageCoTeachers && (
-    <Field data-invalid={!!errors.coTeacherIds || undefined} className="sm:col-span-2">
+    <Field data-invalid={!!errors.coTeacherIds || undefined} className="sm:col-span-2 overflow-hidden">
       <FieldLabel>Соавторы курса</FieldLabel>
       <InputMultiSelect
+      className="overflow-hidden"
         value={(coTeacherIds ?? []).map(String)}
         options={possibleTeachers.map((teacher) => ({
           value: teacher.id.toString(),
@@ -781,6 +804,36 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
         aria-invalid={!!errors.deadlineDays}
       />
       <FieldError errors={[errors.deadlineDays]} />
+      </Field>
+      <Field data-invalid={!!errors.certificateProgress || undefined}>
+        <FieldLabel htmlFor="certificateProgress">Необходимый прогресс для завершения курса 
+          <Tooltip>
+            <TooltipTrigger render={<Button size="icon" variant="ghost">
+                <CircleQuestionMark className="size-4" />
+              </Button>}>
+            </TooltipTrigger>
+            <TooltipContent>
+              <p className="text-sm">Какую часть уроков необходимо пройти для получения сертификата курса. Если не заполнено, то необходимо пройти все уроки.</p>
+            </TooltipContent>
+            </Tooltip>
+          </FieldLabel>
+        <Input
+        id="certificateProgress"
+        type="number"
+        min={0}
+        max={100}
+        className="h-11"
+        placeholder="Значение в процентах"
+        {...register("certificateProgress", {
+          setValueAs: (value) => {
+            if (value === "" || value == null) return null;
+            const parsed = Number(value);
+            return Number.isNaN(parsed) ? Number.NaN : parsed;
+          },
+        })}
+        aria-invalid={!!errors.certificateProgress}
+      />
+      <FieldError errors={[errors.certificateProgress]} />
       </Field>
       <Field data-invalid={!!errors.language || undefined}>
         <FieldLabel htmlFor="language">Язык курса <span className="text-destructive text-sm">*</span></FieldLabel>

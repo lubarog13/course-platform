@@ -74,6 +74,7 @@ export const lessonFormSchema = z
     timeLimit: nullableNumber,
     reviewEnabled: z.boolean().default(true),
     manualGrading: z.boolean().default(false),
+    required: z.boolean().default(false),
     maxAttempts: nullableNumber.default(null),
   })
   .superRefine((data, ctx) => {
@@ -207,6 +208,7 @@ export function toLessonFormValues(lesson: LessonFullDto): LessonFormValues {
     timeLimit: lesson.timeLimitSeconds ?? null,
     reviewEnabled: lesson.reviewEnabled ?? true,
     manualGrading: lesson.manualGrading ?? false,
+    required: lesson.required ?? false,
     maxAttempts: lesson.maxAttempts ?? null,
   };
 }

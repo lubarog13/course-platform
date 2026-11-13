@@ -2,6 +2,7 @@ import { ThemeProvider } from "@/components/providers/theme-provider";
 import { ReCaptchaProvider } from "next-recaptcha-v3";
 import { SessionProvider } from "next-auth/react";
 import { SkulletProvider } from "skullet/react";
+import { TooltipProvider } from "@/components/ui/tooltip"
 import "skullet/styles.css";
 
 export function Providers({
@@ -16,13 +17,15 @@ export function Providers({
       enableSystem
       disableTransitionOnChange
     >
+      <TooltipProvider>
       <ReCaptchaProvider useEnterprise>
         <SessionProvider>
           <SkulletProvider mode="system" reveal="smart">
             {children}
           </SkulletProvider>
-        </SessionProvider>
-      </ReCaptchaProvider>
+          </SessionProvider>
+        </ReCaptchaProvider>
+      </TooltipProvider>
     </ThemeProvider>
   );
 }

@@ -29,6 +29,7 @@ type CoursePartsSqlRow = {
   lesson_type: string | null;
   lesson_points: number | null;
   lesson_duration_seconds: number | null;
+  lesson_required: boolean | null;
   user_completed: boolean | null;
   user_points: number | null;
 };
@@ -94,6 +95,7 @@ export async function GET(_request: NextRequest, { params }: RouteParams) {
       "Lesson"."type" AS lesson_type,
       "Lesson"."points" AS lesson_points,
       "Lesson"."duration_seconds" AS lesson_duration_seconds,
+      "Lesson"."required" AS lesson_required,
       "UserLesson".completed AS user_completed,
       "UserLesson".points AS user_points
     FROM "CoursePart"

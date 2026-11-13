@@ -12,6 +12,7 @@ import {useRouter} from 'next/navigation';
 import NotFound from "../layout/not-found";
 import Loading from '../layout/loading';
 import LessonProgress from "../lessons/LessonProgress";
+import { useSession } from "next-auth/react";
 
 export default function CourseView() {
     const params = useParams();
@@ -28,6 +29,8 @@ export default function CourseView() {
     const [currentLessonIndex, setCurrentLessonIndex] = useState<number>(-1);
     const [openedLessonId, setOpenedLessonId] = useState<number | null>(null);
     const [lessonsList, setLessonsList] = useState<LessonDto[]>([]);
+    const {data: session} = useSession();
+    const user = session?.user;
     useEffect(() => {
         const handleResize = () => {
             setIsDesktop(window.innerWidth >= 1024);
@@ -125,7 +128,7 @@ export default function CourseView() {
 
     if (loading) return <Loading text="Загрузка курса..." />;
     if (error) return <div className="flex flex-col items-center justify-center h-full min-h-screen container mx-auto px-4 pt-8 relative">Ошибка: {error}</div>;
-    if (lessonsList.length === 0) {
+    if (lessonsList.length === 0 && (user?.role === "student" || !user)) {
         return <div className="flex flex-col items-center justify-center h-full min-h-screen container mx-auto px-4 pt-8 relative">В курсе пока нет уроков</div>;
     }
     return  <div className='flex flex-col lg:flex-row max-w-7xl align-stretch mx-auto px-4 pt-8 min-h-screen relative'>
