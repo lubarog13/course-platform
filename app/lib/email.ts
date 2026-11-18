@@ -2,7 +2,11 @@ import { Resend } from "resend";
 import { pretty, render } from "react-email";
 import type { ReactElement } from "react";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+function getResendClient() {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) return null;
+  return new Resend(apiKey);
+}
 
 export function getAppBaseUrl(): string {
   return (
@@ -19,11 +23,12 @@ export async function sendTransactionalEmail(options: {
   subject: string;
   react: ReactElement;
 }): Promise<{ ok: true } | { ok: false; error: string }> {
-  const from = process.env.EMAIL_FROM;
+  const from = process.env.EMAIL_FROM?.trim();
   if (!from) {
     return { ok: false, error: "EMAIL_FROM не задан" };
   }
-  if (!process.env.RESEND_API_KEY) {
+  const resend = getResendClient();
+  if (!resend) {
     return { ok: false, error: "RESEND_API_KEY не задан" };
   }
 

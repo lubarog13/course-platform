@@ -65,6 +65,9 @@ enum NotificationType {
   course_enrollment_request_rejected
   course_review
   certificate_available
+  deadline_extension_request
+  deadline_extension_request_accepted
+  deadline_extension_request_rejected
 }
 
 enum NotificationEntityType {
@@ -383,6 +386,22 @@ model UserEnrollmentRequest {
   course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@map("UserEnrollmentRequest")
+}
+
+/// Запрос на продление срока
+
+model DeadlineExtensionRequest {
+  id               Int       @id @default(autoincrement())
+  userId           Int
+  userCourseId     Int?      // курс целиком
+  userCoursePartId Int?      // или часть
+  reason           String?
+  requestedDays    Int? 
+  status           EnrollmentStatus @default(pending) 
+  reviewedById     Int?
+  reviewedAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }
 
 model UserCourse {

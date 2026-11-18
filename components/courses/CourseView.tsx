@@ -171,6 +171,11 @@ export default function CourseView() {
                   part.lessons.some((lesson) => lesson.id === openedLessonId),
                 )?.userProgress?.deadline ?? null
               }
+              deadlineDays={
+                courseParts.find((part) =>
+                  part.lessons.some((lesson) => lesson.id === openedLessonId),
+                )?.deadlineDays ?? 0
+              }
               courseId={courseParts[0].courseId}
               onArrowClick={selectLesson}
               onProgressUpdate={() => {

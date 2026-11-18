@@ -48,6 +48,137 @@ export type EnrollmentDto =  UserCourse & {
   userPatronymic: string | null;
 };
 
+export type EnrollmentListQuery = {
+  page?: string | number | null;
+  limit?: string | number | null;
+  order?: string | null;
+  sort?: string | null;
+  courseId?: string | number | null;
+  userId?: string | number | null;
+};
+
+export type EnrollmentListResponse = {
+  items: EnrollmentDto[];
+  total: number;
+  page: number;
+  limit: number;
+  pageCount: number;
+};
+
+function parseEnrollmentListInt(
+  value: string | number | null | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isInteger(parsed)) return fallback;
+  return Math.min(max, Math.max(min, parsed));
+}
+
+function toEnrollmentDto(
+  enrollment: UserCourse & {
+    course: { id: number; name: string };
+    user: {
+      id: number;
+      name: string;
+      surname: string;
+      patronymic: string | null;
+    };
+  },
+): EnrollmentDto {
+  return {
+    ...enrollment,
+    courseId: enrollment.course.id,
+    userId: enrollment.user.id,
+    courseName: enrollment.course.name,
+    userName: enrollment.user.name,
+    userSurname: enrollment.user.surname,
+    userPatronymic: enrollment.user.patronymic,
+  };
+}
+
+/** Список заявок/записей с пагинацией для admin / teacher / student. */
+export async function listEnrollments(
+  actor: { id: number; role: Role },
+  query: EnrollmentListQuery = {},
+): Promise<EnrollmentListResponse> {
+  const limit = parseEnrollmentListInt(query.limit, 9, 1, 50);
+  const page = parseEnrollmentListInt(query.page, 1, 1, 10_000);
+  const offset = (page - 1) * limit;
+  const order = query.order === "asc" ? "asc" : "desc";
+  const sort =
+    query.sort === "updatedAt" || query.sort === "createdAt"
+      ? query.sort
+      : "createdAt";
+
+  const filterUserId =
+    query.userId != null && query.userId !== ""
+      ? parseEnrollmentListInt(query.userId, 0, 1, 1_000_000_000)
+      : null;
+  const filterCourseId =
+    query.courseId != null && query.courseId !== ""
+      ? parseEnrollmentListInt(query.courseId, 0, 1, 1_000_000_000)
+      : null;
+
+  if (filterUserId != null && actor.role === "student") {
+    throw new Error("Нет доступа к заявкам других пользователей", {
+      cause: "no_access",
+    });
+  }
+
+  const where: Prisma.UserCourseWhereInput = {};
+
+  if (filterUserId != null) {
+    where.userId = filterUserId;
+  } else if (actor.role === "student") {
+    where.userId = actor.id;
+  }
+
+  if (filterCourseId != null) {
+    where.courseId = filterCourseId;
+  }
+
+  if (actor.role === "teacher") {
+    where.course = {
+      instructors: { some: { userId: actor.id } },
+    };
+  } else if (actor.role !== "admin" && actor.role !== "student") {
+    throw new Error("Нет доступа к списку заявок", { cause: "no_access" });
+  }
+
+  const include = {
+    course: { select: { name: true, id: true } },
+    user: {
+      select: {
+        name: true,
+        surname: true,
+        patronymic: true,
+        id: true,
+      },
+    },
+  } as const;
+
+  const [rows, total] = await prisma.$transaction([
+    prisma.userCourse.findMany({
+      where,
+      include,
+      orderBy: { [sort]: order },
+      skip: offset,
+      take: limit,
+    }),
+    prisma.userCourse.count({ where }),
+  ]);
+
+  return {
+    items: rows.map(toEnrollmentDto),
+    total,
+    page,
+    limit,
+    pageCount: Math.max(1, Math.ceil(total / limit)),
+  };
+}
+
 const COURSE_STUDENT_STATUSES = [
   "enrolled",
   "in_progress",

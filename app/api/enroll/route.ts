@@ -2,10 +2,11 @@ import { prisma } from "@/app/lib/prisma";
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 import { createNotification, sendEmailNotification } from "@/app/lib/notifications";
-import { NotificationType, NotificationEntityType, UserCourse } from "@prisma/client";
+import { NotificationType, NotificationEntityType, type Role } from "@prisma/client";
 import { NextRequest } from "next/server";
 import { jsonError } from "@/app/lib/courses";
-import { EnrollmentDto } from "@/app/lib/enrollment";
+import { listEnrollments } from "@/app/lib/enrollment";
+import { prismaErrorResponse } from "@/app/lib/api";
 
 export async function POST(request: NextRequest) {
   let body: unknown;
@@ -144,179 +145,37 @@ export async function POST(request: NextRequest) {
   }
 }
 
+/**
+ * GET /api/enroll?page&limit&order&sort&courseId&userId
+ * Пагинированный список заявок для текущего пользователя (по роли).
+ */
 export async function GET(request: NextRequest) {
-  const searchParams = request.nextUrl.searchParams;
-  const userId = searchParams.get("userId") || null;
-  const courseId = searchParams.get("courseId") || null;
-  const session = await auth();
-  if (!userId) {
-    if (!session?.user?.id) {
+  try {
+    const session = await auth();
+    if (!session?.user?.id || !session.user.role) {
       return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
     }
-    if (session.user.role === "admin") {
-      const enrollments = await prisma.userCourse.findMany({
-        include: {
-          course: {
-            select: {
-              name: true,
-              id: true,
-            },
-          },
-          user: {
-            select: {
-              name: true,
-              surname: true,
-              patronymic: true,
-              id: true,
-            },
-          },
-        },
-      })
-      const enrollmentsDto: EnrollmentDto[] = [];
-      for (const enrollment of enrollments) {
-        enrollmentsDto.push({
-          ...enrollment,
-          courseId: enrollment.courseId,
-          userId: enrollment.userId,
-          courseName: enrollment.course.name,
-          userName: enrollment.user.name,
-          userSurname: enrollment.user.surname,
-          userPatronymic: enrollment.user.patronymic,
-        });
-      }
-      return NextResponse.json(enrollmentsDto);
-    }
-    if (session.user.role === "teacher") {
-      const filters: { courseId?: number } = {
-        
-      };
-      if (courseId) {
-        filters.courseId = parseInt(courseId);
-      }
-      const enrollments = await prisma.userCourse.findMany({
-        where: {
-          course: {
-            instructors: {
-              some: {
-                userId: parseInt(session.user.id),
-              },
-            },
-          },
-          ...filters,
-        },
-        include: {
-          course: {
-            select: {
-              name: true,
-              id: true,
-            },
-          },
-          user: {
-            select: {
-              name: true,
-              surname: true,
-              patronymic: true,
-              id: true,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      })
-      const enrollmentsDto: EnrollmentDto[] = [];
-      for (const enrollment of enrollments) {
-        enrollmentsDto.push({
-          ...enrollment,
-          courseId: enrollment.course.id,
-          userId: enrollment.user.id,
-          courseName: enrollment.course.name,
-          userName: enrollment.user.name,
-          userSurname: enrollment.user.surname,
-          userPatronymic: enrollment.user.patronymic,
-        });
-      }
-      return NextResponse.json(enrollmentsDto);
-    }
-    if (session.user.role === "student") {
-      const enrollments = await prisma.userCourse.findMany({
-        where: { userId: parseInt(session.user.id) },
-        include: {
-          course: {
-            select: {
-              name: true,
-              id: true,
-            },
-          },
-          user: {
-            select: {
-              name: true,
-              surname: true,
-              patronymic: true,
-              id: true,
-            },
-          },
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-      })
-      const enrollmentsDto: EnrollmentDto[] = [];
-      for (const enrollment of enrollments) {
-        enrollmentsDto.push({
-          ...enrollment,
-          courseId: enrollment.course.id,
-          userId: enrollment.user.id,
-          courseName: enrollment.course.name,
-          userName: enrollment.user.name,
-          userSurname: enrollment.user.surname,
-          userPatronymic: enrollment.user.patronymic,
-        });
-      }
-      return NextResponse.json(enrollments);
-    }
-    
-    return NextResponse.json({ error: "У вас нет доступа к этой странице" }, { status: 403 });
-  }
-  if (!session?.user?.id) {
-    return NextResponse.json({ error: "Не авторизован" }, { status: 401 });
-  }
-  if (session.user.role === "student") {
-    return NextResponse.json({ error: "У вас нет доступа к этой странице" }, { status: 403 });
-  }
-  const enrollments = await prisma.userCourse.findMany({
-    where: { userId: parseInt(userId) },
-    include: {
-      course: {
-        select: {
-          name: true,
-          id: true,
-        },
+
+    const searchParams = request.nextUrl.searchParams;
+    const result = await listEnrollments(
+      {
+        id: Number(session.user.id),
+        role: session.user.role as Role,
       },
-      user: {
-        select: {
-          name: true,
-          surname: true,
-          patronymic: true,
-          id: true,
-        },
+      {
+        page: searchParams.get("page"),
+        limit: searchParams.get("limit"),
+        order: searchParams.get("order"),
+        sort: searchParams.get("sort"),
+        courseId: searchParams.get("courseId"),
+        userId: searchParams.get("userId"),
       },
-    },
-    orderBy: {
-      createdAt: "desc",
-    },
-  });
-  const enrollmentsDto: EnrollmentDto[] = [];
-  for (const enrollment of enrollments) {
-    enrollmentsDto.push({
-      ...enrollment,
-      courseId: enrollment.course.id,
-      userId: enrollment.user.id,
-      courseName: enrollment.course.name,
-      userName: enrollment.user.name,
-      userSurname: enrollment.user.surname,
-      userPatronymic: enrollment.user.patronymic,
-    });
+    );
+    return NextResponse.json(result);
+  } catch (error) {
+    if (error instanceof Error && error.cause === "no_access") {
+      return NextResponse.json({ error: error.message }, { status: 403 });
+    }
+    return prismaErrorResponse(error, "Запись на курс");
   }
-  return NextResponse.json(enrollmentsDto);
 }

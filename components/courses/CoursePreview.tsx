@@ -347,7 +347,7 @@ export function CoursePreview({ course }: { course: CourseDto }) {
                 onClick={() => router.push(`/course/${course.slug}/learn`)}
               >
                 <PlayIcon className="w-4 h-4 inline-block mr-2" />
-                Перейти к обучению
+                {isInstructor ? "Перейти к курсу" : "Перейти к обучению"}
               </Button>
             )
           }

@@ -17,6 +17,7 @@ import CommentList from "../comments/CommentList";
 import { AlertCircleIcon } from "lucide-react";
 import CertificateModal from "../certificates/CertificateModal";
 import { cn } from "@/lib/utils";
+import DeadlineBanner from "./DeadlineBanner";
 
 type LessonViewProps = {
   courseId: number;
@@ -24,6 +25,7 @@ type LessonViewProps = {
   lessonId: number;
   prevLesson?: LessonDto;
   nextLesson?: LessonDto;
+  deadlineDays?: number;
   /** UserCoursePart.deadline текущей части */
   partDeadline?: Date | string | null;
   onArrowClick: (lessonId: number) => void;
@@ -51,6 +53,7 @@ export default function LessonView({
   nextLesson,
   canEdit,
   partDeadline = null,
+  deadlineDays = 0,
   courseId,
   onArrowClick,
   onProgressUpdate,
@@ -62,7 +65,7 @@ export default function LessonView({
   const router = useRouter();
 
   const progressIdRef = useRef<number | null>(null);
-  const enteredAtRef = useRef<number>(Date.now());
+  const enteredAtRef = useRef<number>(new Date().getTime());
   const baseTimeSpentRef = useRef(0);
   const completedRef = useRef(false);
   const flushedRef = useRef(false);
@@ -73,13 +76,6 @@ export default function LessonView({
     ? partDeadline
     : new Date(partDeadline)
   : null;
-const deadlineValid =
-  deadlineDate != null && !Number.isNaN(deadlineDate.getTime())
-    ? deadlineDate
-    : null;
-const isDeadlinePassed =
-  deadlineValid != null && deadlineValid.getTime() < Date.now();
-
   const updateLessonProgress = useCallback(
     async ({
       completed,
@@ -340,15 +336,12 @@ const isDeadlinePassed =
             <span>Этот урок является обязательным для прохождения</span>
           </div>
         )}
-        {isDeadlinePassed && (
-          <div className="text-gray-700 dark:text-gray-300 mb-4 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
-            <Ban className="w-4 h-4 text-destructive" />
-            <span>Срок прохождения истёк {deadlineValid?.toLocaleString("ru-RU")}</span>
-            <Button variant="outline" className="text-destructive hover:text-destructive/80">
-              <RefreshCcwIcon className="w-4 h-4" />
-              <span>Сбросить срок сдачи</span>
-            </Button>
-          </div>
+        {lesson.userProgress?.completed && (
+        <DeadlineBanner
+          coursePartId={lesson.coursePartId}
+            deadline={deadlineDate}
+            deadlineDays={deadlineDays ?? 0}
+          />
         )}
         <div className="text-gray-700 dark:text-gray-300 mb-4">{lesson.description}</div>
         {lesson.attachment && (

@@ -1,13 +1,17 @@
 import { NotificationType, NotificationEntityType, Notification } from "@prisma/client";
 import { prisma } from "./prisma";
-import { Resend } from 'resend';
+import { Resend } from "resend";
 import {
   NotificationEmail,
   type NotificationEmailProps,
 } from "@/emails/notification";
 import { render, pretty } from "react-email";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+function getResendClient() {
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  if (!apiKey) return null;
+  return new Resend(apiKey);
+}
 export type NotificationFull = Notification & {
   url: string;
 };
@@ -138,7 +142,10 @@ async function withUrls(
     const entityId = notification.entityId;
     let url = "";
     if (entityId != null && notification.entityType != null) {
-      if (notification.entityType === NotificationEntityType.course) {
+      if (notification.type === NotificationType.course_enrollment_request || NotificationType.deadline_extension_request) {
+        url = `/user/enrollments?tab=${notification.type === NotificationType.course_enrollment_request ? "enrollments" : "extensions"}`;
+      }
+      else if (notification.entityType === NotificationEntityType.course) {
         url = courseUrlById.get(entityId) ?? "";
       } else if (notification.entityType === NotificationEntityType.lesson) {
         url = lessonUrlById.get(entityId) ?? "";
@@ -211,11 +218,24 @@ export async function sendEmailNotification(userId: number, payload: EmailNotifi
     },
   });
   if (!user) {
-    throw new Error('Пользователь не найден', { cause: 'user_not_found' });
+    throw new Error("Пользователь не найден", { cause: "user_not_found" });
   }
   if (!user.agreement?.accept_email_notifications) {
     return;
   }
+
+  const apiKey = process.env.RESEND_API_KEY?.trim();
+  const from = process.env.EMAIL_FROM?.trim();
+  if (!apiKey || !from) {
+    console.warn(
+      "sendEmailNotification: пропуск — не задан RESEND_API_KEY или EMAIL_FROM",
+    );
+    return;
+  }
+
+  const resend = getResendClient();
+  if (!resend) return;
+
   const variables: NotificationEmailProps = {
     title: payload.title,
     recipientName: user.name,
@@ -224,10 +244,13 @@ export async function sendEmailNotification(userId: number, payload: EmailNotifi
     actionLabel: payload.label,
   };
   const html = await pretty(await render(<NotificationEmail {...variables} />));
-  resend.emails.send({
-    from: process.env.EMAIL_FROM as string,
+  const { error } = await resend.emails.send({
+    from,
     to: user.email,
     subject: variables.title,
-    html: html,
+    html,
   });
+  if (error) {
+    console.error("Resend error:", error);
+  }
 }

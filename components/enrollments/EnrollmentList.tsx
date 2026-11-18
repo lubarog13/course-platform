@@ -2,9 +2,11 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useSession } from "next-auth/react";
-import { EnrollmentDto } from "@/app/lib/enrollment";
+import {
+  type EnrollmentDto,
+  type EnrollmentListResponse,
+} from "@/app/lib/enrollment";
 import Loading from "../layout/loading";
-import NotFound from "../layout/not-found";
 import {
   Card,
   CardContent,
@@ -19,6 +21,14 @@ import { CheckIcon, XIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ErrorView from "../layout/error-view";
 import { useRouter } from "next/navigation";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
 
 const statusAdapters: Record<EnrollmentStatus, string> = {
   [EnrollmentStatus.pending]: "Ожидает рассмотрения",
@@ -29,37 +39,64 @@ const statusAdapters: Record<EnrollmentStatus, string> = {
   [EnrollmentStatus.expired]: "Истекло",
 };
 
+const cardClasses: Record<EnrollmentStatus, string> = {
+  [EnrollmentStatus.pending]: "",
+  [EnrollmentStatus.enrolled]: "bg-muted text-muted-foreground",
+  [EnrollmentStatus.in_progress]: "bg-muted text-muted-foreground",
+  [EnrollmentStatus.completed]: "",
+  [EnrollmentStatus.dropped]: "bg-muted text-muted-foreground",
+  [EnrollmentStatus.expired]: "bg-muted text-muted-foreground",
+};
+
 export default function EnrollmentList() {
-  const [enrollments, setEnrollments] = useState<EnrollmentDto[]>([]);
+  const [data, setData] = useState<EnrollmentListResponse | null>(null);
+  const [page, setPage] = useState(1);
+  const [order, setOrder] = useState<"asc" | "desc">("desc");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionId, setActionId] = useState<number | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const { data: session, status } = useSession();
   const router = useRouter();
-  const fetchEnrollments = useCallback(async () => {
-    try {
-      const res = await fetch("/api/enroll");
-      if (!res.ok) {
-        const payload = (await res.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        throw new Error(payload?.error ?? "Не удалось загрузить записи на курсы");
+
+  const fetchEnrollments = useCallback(
+    async (signal?: AbortSignal) => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({
+          page: String(page),
+          limit: "9",
+          sort: "createdAt",
+          order,
+        });
+        const res = await fetch(`/api/enroll?${params}`, { signal });
+        if (!res.ok) {
+          const payload = (await res.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+          throw new Error(
+            payload?.error ?? "Не удалось загрузить записи на курсы",
+          );
+        }
+        const payload = (await res.json()) as EnrollmentListResponse;
+        setData(payload);
+        setError(null);
+      } catch (err) {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setError(err instanceof Error ? err.message : "Ошибка загрузки");
+        setData(null);
+      } finally {
+        setLoading(false);
       }
-      const data = (await res.json()) as EnrollmentDto[];
-      setEnrollments(data);
-      setError(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Ошибка загрузки");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    },
+    [page, order],
+  );
 
   useEffect(() => {
-    if (status === "authenticated") {
-      void fetchEnrollments();
-    }
+    if (status !== "authenticated") return;
+    const controller = new AbortController();
+    void fetchEnrollments(controller.signal);
+    return () => controller.abort();
   }, [status, fetchEnrollments]);
 
   const updateEnrollmentStatus = async (
@@ -87,18 +124,24 @@ export default function EnrollmentList() {
         endDate?: string | Date | null;
       };
 
-      setEnrollments((current) =>
-        current.map((item) =>
-          item.id === enrollmentId
-            ? {
-                ...item,
-                status: updated.status,
-                updatedAt: new Date(updated.updatedAt),
-                endDate: updated.endDate ? new Date(updated.endDate) : item.endDate,
-              }
-            : item,
-        ),
-      );
+      setData((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          items: current.items.map((item) =>
+            item.id === enrollmentId
+              ? {
+                  ...item,
+                  status: updated.status,
+                  updatedAt: new Date(updated.updatedAt),
+                  endDate: updated.endDate
+                    ? new Date(updated.endDate)
+                    : item.endDate,
+                }
+              : item,
+          ),
+        };
+      });
     } catch (err) {
       setActionError(err instanceof Error ? err.message : "Ошибка обновления");
     } finally {
@@ -118,13 +161,23 @@ export default function EnrollmentList() {
     await updateEnrollmentStatus(enrollmentId, EnrollmentStatus.dropped);
   };
 
-  if (loading || status === "loading") {
+  if ((loading && !data) || status === "loading") {
     return <Loading />;
   }
 
-  if (error) {
-    return <ErrorView title="Ошибка загрузки" text={error} showReloadButton={true} showBackButton={true} />;
+  if (error && !data) {
+    return (
+      <ErrorView
+        title="Ошибка загрузки"
+        text={error}
+        showReloadButton={true}
+        showBackButton={true}
+      />
+    );
   }
+
+  const enrollments = data?.items ?? [];
+  const pageCount = data?.pageCount ?? 1;
 
   if (enrollments.length === 0) {
     return (
@@ -138,20 +191,41 @@ export default function EnrollmentList() {
 
   return (
     <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted-foreground">
+          Всего: {data?.total ?? 0}
+        </p>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => {
+            setPage(1);
+            setOrder((current) => (current === "desc" ? "asc" : "desc"));
+          }}
+        >
+          По дате: {order === "desc" ? "сначала новые" : "сначала старые"}
+        </Button>
+      </div>
+
       {actionError && (
         <p className="rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {actionError}
         </p>
       )}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {enrollments.map((enrollment) => {
+        {enrollments.map((enrollment: EnrollmentDto) => {
           const busy = actionId === enrollment.id;
           const isPending = enrollment.status === EnrollmentStatus.pending;
 
           return (
-            <Card key={enrollment.id}>
+            <Card key={enrollment.id} className={cn(cardClasses[enrollment.status])}>
               <CardHeader>
-                <CardTitle className="cursor-pointer hover:underline" onClick={() => void router.push(`/user/profile/${enrollment.userId}`)}>
+                <CardTitle
+                  className="cursor-pointer hover:underline"
+                  onClick={() =>
+                    void router.push(`/user/profile/${enrollment.userId}`)
+                  }
+                >
                   {enrollment.userSurname} {enrollment.userName}{" "}
                   {enrollment.userPatronymic}
                 </CardTitle>
@@ -226,6 +300,61 @@ export default function EnrollmentList() {
           );
         })}
       </div>
+
+      {pageCount > 1 && (
+        <Pagination>
+          <PaginationContent>
+            <PaginationItem>
+              <PaginationPrevious
+                href="#"
+                aria-disabled={page <= 1 || loading}
+                className={
+                  page <= 1 || loading
+                    ? "pointer-events-none opacity-50"
+                    : undefined
+                }
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (page > 1 && !loading) setPage((current) => current - 1);
+                }}
+              />
+            </PaginationItem>
+            {Array.from({ length: pageCount }, (_, index) => index + 1).map(
+              (pageNumber) => (
+                <PaginationItem key={pageNumber}>
+                  <PaginationLink
+                    href="#"
+                    isActive={pageNumber === page}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      if (!loading) setPage(pageNumber);
+                    }}
+                  >
+                    {pageNumber}
+                  </PaginationLink>
+                </PaginationItem>
+              ),
+            )}
+            <PaginationItem>
+              <PaginationNext
+                href="#"
+                aria-disabled={page >= pageCount || loading}
+                className={
+                  page >= pageCount || loading
+                    ? "pointer-events-none opacity-50"
+                    : undefined
+                }
+                onClick={(event) => {
+                  event.preventDefault();
+                  if (page < pageCount && !loading) {
+                    setPage((current) => current + 1);
+                  }
+                }}
+              />
+            </PaginationItem>
+          </PaginationContent>
+        </Pagination>
+      )}
     </div>
   );
 }

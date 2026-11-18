@@ -97,6 +97,10 @@ export const NotificationType = {
   course_enrollment_request_accepted: "course_enrollment_request_accepted",
   course_enrollment_request_rejected: "course_enrollment_request_rejected",
   course_review: "course_review",
+  certificate_available: "certificate_available",
+  deadline_extension_request: "deadline_extension_request",
+  deadline_extension_request_accepted: "deadline_extension_request_accepted",
+  deadline_extension_request_rejected: "deadline_extension_request_rejected",
 } as const;
 export type NotificationType =
   (typeof NotificationType)[keyof typeof NotificationType];

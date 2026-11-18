@@ -199,7 +199,9 @@ export default function EditorView({ certificateTemplates }: { certificateTempla
           isNew={lesson.id < 1}
           onSaved={(saved) => {
             setLesson(saved);
-            if (saved.id > 0) {
+            // Не делаем replace при том же lessonId — иначе effect
+            // сбрасывает урок и LessonEdit теряет статус «Сохранено».
+            if (saved.id > 0 && saved.id !== lessonId) {
               router.replace(`/editor?lessonId=${saved.id}`);
             }
           }}

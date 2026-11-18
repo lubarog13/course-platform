@@ -15,7 +15,9 @@ import { BellIcon } from "lucide-react";
 import { Empty, EmptyHeader, EmptyMedia, EmptyTitle, EmptyDescription, EmptyContent } from "../ui/empty";
 import { Badge } from "../ui/badge";
 
-function actionLabel(entityType: NotificationFull["entityType"]) {
+function actionLabel(entityType: NotificationFull["entityType"], type: NotificationFull["type"]) {
+  if (type === "course_enrollment_request") return "Открыть заявку";
+  if (type === "deadline_extension_request") return "Открыть заявку";
   if (entityType === "course") return "Открыть курс";
   if (entityType === "lesson") return "Открыть урок";
   if (entityType === "message") return "Открыть сообщение";
@@ -55,7 +57,7 @@ function NotificationItemContent({
         {notification.url && (
           <ItemActions className="flex flex-col gap-2">
             <Button variant="outline" size="sm" className="px-1 sm:px-2.5">
-              <Link className="hidden sm:block" href={notification.url}>{actionLabel(notification.entityType)}</Link>
+              <Link className="hidden sm:block" href={notification.url}>{actionLabel(notification.entityType, notification.type)}</Link>
               <ArrowRightIcon className="size-4 sm:hidden" />
             </Button>
             <div className="text-sm text-muted-foreground hidden sm:block">

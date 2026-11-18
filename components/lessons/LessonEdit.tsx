@@ -134,7 +134,8 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
     setTestQuestions(lesson.testQuestions ?? []);
     setQuestionsChanged(false);
     setDraftRestoredAt(null);
-    setSavedAt(null);
+    // Не сбрасываем savedAt при обновлении того же урока после save —
+    // иначе снова показывается «ещё не сохранялись».
     setError(null);
   }, [lesson, reset, userId]);
 
@@ -215,7 +216,12 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
     let next: number | null = values.durationSeconds;
     if (values.type === "video" && values.video.durationSeconds != null) {
       next = values.video.durationSeconds;
-    } else if (values.type === "text") {
+    } else if (
+      values.type === "text" &&
+      (values.durationSeconds == null ||
+        !Number.isFinite(values.durationSeconds))
+    ) {
+      // Только автоподстановка, если поле пустое — ручное значение не затираем.
       next = estimatedTextDuration(values.textContent ?? "");
     }
     if (next === values.durationSeconds) return;
@@ -288,7 +294,10 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
     setTestQuestions([...testQuestions, newQuestion]);
   };
 
-  const onSubmit: SubmitHandler<LessonFormValues> = async (values) => {
+  const onSubmit = async (
+    values: LessonFormValues,
+    options?: { publish?: boolean },
+  ) => {
     setSaving(true);
     setError(null);
     if (type === "test" && !testQuestions.length) {
@@ -309,6 +318,14 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
 
       const currentId = openedLessonId.current ?? lesson.id;
       const creating = currentId < 1;
+      const publishedAtValue =
+        values.publishedAt instanceof Date
+          ? values.publishedAt
+          : values.publishedAt
+            ? new Date(values.publishedAt)
+            : publishedAt;
+      const shouldPublish = options?.publish === true || !!publishedAtValue;
+
       const response = await fetch(
         creating ? "/api/lesson" : `/api/lesson/${currentId}`,
         {
@@ -319,7 +336,12 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
             name: values.name.trim(),
             description: values.description.trim() || null,
             textContent: values.type === "test" ? null : markdown,
-            publishedAt: publishedAt,
+            // API ожидает boolean published, не publishedAt
+            ...(options?.publish || (creating && shouldPublish)
+              ? { published: true }
+              : !creating && lesson.publishedAt && !publishedAtValue
+                ? { published: false }
+                : {}),
             coursePartId: values.coursePartId,
             sortOrder: values.sortOrder,
             durationSeconds,
@@ -384,13 +406,22 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
   const publishLesson = async () => {
     const nextPublishedAt = new Date();
     setPublishedAt(nextPublishedAt);
-    setValue("publishedAt", nextPublishedAt, { shouldDirty: true });
-    await form.handleSubmit(onSubmit)();
+    setValue("publishedAt", nextPublishedAt, {
+      shouldDirty: true,
+      shouldValidate: true,
+    });
+    // Передаём дату явно: setState ещё не обновил publishedAt в замыкании onSubmit.
+    await form.handleSubmit((values) =>
+      onSubmit({ ...values, publishedAt: nextPublishedAt }, { publish: true }),
+    )();
   };
 
-  useHotkeys('ctrl+s', (e) => {
+  const submitForm: SubmitHandler<LessonFormValues> = (values) =>
+    onSubmit(values);
+
+  useHotkeys("ctrl+s", (e) => {
     e.preventDefault();
-    void form.handleSubmit(onSubmit)();
+    void form.handleSubmit(submitForm)();
   });
 
   return (
@@ -400,7 +431,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
         className="mx-auto flex w-full max-w-4xl flex-col gap-6"
         onSubmit={(event) => {
           syncMarkdown(false);
-          void handleSubmit(onSubmit)(event);
+          void handleSubmit(submitForm)(event);
         }}
       >
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -435,7 +466,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
             }
           >            {saving ? "Сохранение…" : "Сохранить"}
           </Button>
-          {savedAt && !isDirty && (
+          {(savedAt || lesson.id > 0) && !isDirty && !questionsChanged && (
             <Button
               variant="secondary"
               type="button"
