@@ -1,0 +1,18 @@
+# Установка:
+#   1. sudo mkdir -p /etc/course-platform /opt/course-platform/scripts
+#   2. sudo cp deploy/cron.env.example /etc/course-platform/cron.env
+#      sudo chmod 600 /etc/course-platform/cron.env   # заполните APP_URL и CRON_SECRET
+#   3. sudo cp scripts/cron-deadline-reminders.sh /opt/course-platform/scripts/
+#      sudo chmod 755 /opt/course-platform/scripts/cron-deadline-reminders.sh
+#   4. sudo cp deploy/cron.d/course-platform-deadlines /etc/cron.d/course-platform-deadlines
+#      sudo chmod 644 /etc/cron.d/course-platform-deadlines
+#
+# Логи: /var/log/course-platform-deadline-cron.log
+# Время: системный TZ (для Москвы: timedatectl set-timezone Europe/Moscow)
+
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+MAILTO=""
+
+# Каждый день в 09:00 — напоминания о дедлайнах (in-app + email)
+0 9 * * * root /opt/course-platform/scripts/cron-deadline-reminders.sh >> /var/log/course-platform-deadline-cron.log 2>&1

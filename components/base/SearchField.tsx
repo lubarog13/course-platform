@@ -14,17 +14,22 @@ type SearchFieldProps = {
   results: number
   emitOnInput: boolean
   onSearch: (value: string) => void
+  onInput?: (value: string) => void
+  showResults?: boolean
 }
 
 
-export function SearchField({ className, placeholder, results, emitOnInput = false, onSearch }: SearchFieldProps) {
+export function SearchField({ className, placeholder, onInput, results, emitOnInput = false, showResults = true, onSearch }: SearchFieldProps) {
     const [search, setSearch] = useState("")
     const debouncedSearch = useDebounce(search, 500)
     const handleSearch = (value: string) => {
         setSearch(value)
+        if (onInput) {
+            onInput(value)
+        }
     }
     useEffect(() => {
-        if (emitOnInput) {
+        if (emitOnInput && debouncedSearch.length > 0) {
             onSearch(debouncedSearch)
         }
     }, [debouncedSearch, emitOnInput])
@@ -42,7 +47,7 @@ export function SearchField({ className, placeholder, results, emitOnInput = fal
       <InputGroupAddon>
         <Search />
       </InputGroupAddon>
-      <InputGroupAddon align="inline-end">{results} {declOfNum(results, ["результат", "результата", "результатов"])}</InputGroupAddon>
+      {showResults && <InputGroupAddon align="inline-end">{results} {declOfNum(results, ["результат", "результата", "результатов"])}</InputGroupAddon>}
     </InputGroup>
   )
 }

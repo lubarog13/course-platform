@@ -24,6 +24,18 @@ export function CoursePreview({ course }: { course: CourseDto }) {
   }, [course.durationSeconds]);
   const [enrollment, setEnrollment] = useState<UserCourse | null>(null);
   const [reviews, setReviews] = useState<ReviewDto[] | null>(null);
+  let imageFile: string;
+  if (course.coverFile?.url) {
+    const filename =
+      typeof course.coverFile?.url === "string"
+        ? course.coverFile?.url.split(/[/\\]/).pop()
+        : undefined;
+    imageFile = filename
+      ? `/api/uploads/${encodeURIComponent(filename)}`
+      : "/images/course-placeholder.jpeg";
+  } else {
+    imageFile = "/images/course-placeholder.jpeg";
+  }
   useEffect(() => {
     if (course.enrollments && course.enrollments.length > 0) {
       setEnrollment(course.enrollments[0]);
@@ -154,7 +166,7 @@ export function CoursePreview({ course }: { course: CourseDto }) {
           </Button>
         )}
           <img
-            src={course.coverFile?.url || "/images/course-placeholder.jpeg"}
+            src={imageFile}
             alt={course.name}
             className="rounded-lg shadow-md w-full h-auto object-cover md:hidden mb-6 aspect-video"
           />
@@ -249,7 +261,7 @@ export function CoursePreview({ course }: { course: CourseDto }) {
         </div>
         <div className="grid grid-cols-2 md:block fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-sm w-full md:static md:border-l border-t md:border-t-0 border-gray-200 md:border-gray-300 dark:border-gray-700 p-4 md:p-0 md:pl-8 md:w-1/3 max-h-[300px] md:max-h-none">
           <img
-            src={course.coverFile?.url || "/images/course-placeholder.jpeg"}
+            src={imageFile}
             alt={course.name}
             className="rounded-lg shadow-md w-full h-auto object-cover mb-8 aspect-video hidden md:block"
           />

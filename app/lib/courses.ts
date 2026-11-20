@@ -334,6 +334,100 @@ export async function listCourses(query: CourseListQuery) {
 
 export type CourseListResponse = Awaited<ReturnType<typeof listCourses>>;
 
+const HOME_COURSES_LIMIT = 10;
+
+const homeCoursesWhere = {
+  publishedAt: { not: null },
+  deletedAt: null,
+} as const;
+
+function toHomeCourseList(
+  rows: Awaited<ReturnType<typeof prisma.course.findMany>>,
+  limit: number,
+): CourseListResponse {
+  const items = rows.map((row) =>
+    serializeCourse({
+      ...row,
+      enrollments: [],
+    } as unknown as CourseRecord),
+  );
+  return {
+    items,
+    total: items.length,
+    page: 1,
+    limit,
+    pageCount: 1,
+  };
+}
+
+/** Популярные — по числу записей на курс. */
+export async function getPopularCourses(
+  limit = HOME_COURSES_LIMIT,
+): Promise<CourseListResponse> {
+  const rows = await prisma.course.findMany({
+    where: homeCoursesWhere,
+    include: courseInclude,
+    orderBy: [{ enrollments: { _count: "desc" } }, { publishedAt: "desc" }],
+    take: limit,
+  });
+  return toHomeCourseList(rows, limit);
+}
+
+/** Новые — по дате публикации. */
+export async function getNewCourses(
+  limit = HOME_COURSES_LIMIT,
+): Promise<CourseListResponse> {
+  const rows = await prisma.course.findMany({
+    where: homeCoursesWhere,
+    include: courseInclude,
+    orderBy: [{ publishedAt: "desc" }, { id: "desc" }],
+    take: limit,
+  });
+  return toHomeCourseList(rows, limit);
+}
+
+/** Лучшие / рекомендованные — по рейтингу и числу отзывов. */
+export async function getRecommendedCourses(
+  limit = HOME_COURSES_LIMIT,
+): Promise<CourseListResponse> {
+  const rows = await prisma.course.findMany({
+    where: {
+      ...homeCoursesWhere,
+      rating: { not: null },
+    },
+    include: courseInclude,
+    orderBy: [
+      { rating: "desc" },
+      { ratingCount: "desc" },
+      { publishedAt: "desc" },
+    ],
+    take: limit,
+  });
+  return toHomeCourseList(rows, limit);
+}
+
+export type CategoryWithCount = Category & {
+  coursesCount: number;
+};
+
+export async function getCategories(): Promise<CategoryWithCount[]> {
+  const categories = await prisma.category.findMany({
+    orderBy: { courses: { _count: "desc" } },
+    take: 20,
+   include: {
+    _count: {
+      select: {
+        courses: true,
+      },
+    },
+   },
+  });
+  return categories.map((category) => ({
+    ...category,
+    coursesCount: category._count.courses,
+  }));
+}
+
 export function parseIdParam(id: string): { id: number } | { slug: string } {
   if (/^\d+$/.test(id)) {
     return { id: Number(id) };
