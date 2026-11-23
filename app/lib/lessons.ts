@@ -1341,9 +1341,12 @@ export async function saveTestAttemptAnswers(
     }
 
 
-    const passed =
-      attempt.lesson.passingScore == null
-        ? null
+    // null = ждём ручную проверку; true/false = автозачёт по проходному баллу
+    // (если проходной балл не задан — любая сдача считается зачётом)
+    const passed = attempt.lesson.manualGrading
+      ? null
+      : attempt.lesson.passingScore == null
+        ? true
         : result.score >= attempt.lesson.passingScore;
 
     for (const graded of result.answers) {
@@ -1364,12 +1367,11 @@ export async function saveTestAttemptAnswers(
         submittedAt: new Date(),
         score: result.score,
         maxScore: result.maxScore,
-        passed: attempt.lesson.manualGrading ? null : passed,
+        passed,
       },
     });
 
-    const lessonCompleted =
-      attempt.lesson.manualGrading || passed === true || passed === null;
+    const lessonCompleted = passed === true;
     await tx.userLesson.upsert({
       where: {
         userId_lessonId: {
@@ -1387,9 +1389,8 @@ export async function saveTestAttemptAnswers(
       },
       update: {
         points: result.score,
-        ...(lessonCompleted
-          ? { completed: true, completedAt: new Date() }
-          : {}),
+        completed: lessonCompleted,
+        completedAt: lessonCompleted ? new Date() : null,
         lastAccessedAt: new Date(),
       },
     });
@@ -1571,11 +1572,11 @@ export async function saveTeacherTestScores(
       select: { score: true },
     });
     const totalScore = answers.reduce((sum, answer) => sum + answer.score, 0);
+    // После проверки преподавателем: без проходного балла — зачёт; иначе по порогу
     const passed =
       attempt.lesson.passingScore == null
-        ? null
+        ? true
         : totalScore >= attempt.lesson.passingScore;
-
 
     await tx.testAttempt.update({
       where: { id: attemptId },
@@ -1586,6 +1587,7 @@ export async function saveTeacherTestScores(
       },
     });
 
+    const lessonCompleted = passed === true;
     await tx.userLesson.upsert({
       where: {
         userId_lessonId: {
@@ -1597,15 +1599,14 @@ export async function saveTeacherTestScores(
         userId: attempt.userId,
         lessonId: attempt.lessonId,
         points: totalScore,
-        completed: passed !== false,
-        completedAt: passed !== false ? new Date() : null,
+        completed: lessonCompleted,
+        completedAt: lessonCompleted ? new Date() : null,
         lastAccessedAt: new Date(),
       },
       update: {
         points: totalScore,
-        ...(passed !== false
-          ? { completed: true, completedAt: new Date() }
-          : { completed: false, completedAt: null }),
+        completed: lessonCompleted,
+        completedAt: lessonCompleted ? new Date() : null,
         lastAccessedAt: new Date(),
       },
     });

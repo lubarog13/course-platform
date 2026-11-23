@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Geist, Geist_Mono, Lora, Inter } from "next/font/google";
 import "./globals.css";
 import { Providers } from "./providers";
 import Header from "@/components/layout/header";
@@ -12,6 +12,16 @@ const geistSans = Geist({
 
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
+
+const lora = Lora({
+  variable: "--font-lora",
+  subsets: ["latin"],
+});
+
+const inter = Inter({
+  variable: "--font-inter",
   subsets: ["latin"],
 });
 
@@ -33,7 +43,7 @@ export default async function RootLayout({
     <html
       lang="ru"
       suppressHydrationWarning
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${geistSans.variable} ${geistMono.variable} ${lora.variable} ${inter.variable} h-full antialiased`}
     >
       <body className="flex min-h-full flex-col font-sans">
         <Providers>

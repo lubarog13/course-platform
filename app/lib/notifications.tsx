@@ -216,6 +216,7 @@ type EmailNotificationPayload = {
 type DeadlineEmailPayload = {
   courseName: string;
   coursePartName: string;
+  coursePartId: number;
   deadlineDate: Date;
   courseSlug: string;
 };
@@ -453,6 +454,7 @@ export async function notifyDeadlineReminders(
         coursePartName: reminder.coursePartName,
         deadlineDate: reminder.deadlineDate,
         courseSlug: reminder.courseSlug,
+        coursePartId: reminder.coursePartId,
       });
       result.emailsAttempted += 1;
     } catch (error) {
@@ -541,7 +543,7 @@ export async function sendDeadlineEmailNotification(userId: number, payload: Dea
     deadlineDate: payload.deadlineDate,
     actionUrl:
       (process.env.NEXT_PUBLIC_APP_URL ?? "") +
-      `/course/${payload.courseSlug}/learn`,
+      `/course/${payload.courseSlug}/learn?partId=${payload.coursePartId}`,
     recipientName: user.name,
   };
   const html = await pretty(await render(<DeadlineEmail {...variables} />));

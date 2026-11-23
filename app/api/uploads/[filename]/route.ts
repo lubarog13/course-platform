@@ -1,7 +1,13 @@
-import { NextResponse } from "next/server";
+import { NextResponse, type NextRequest } from "next/server";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { resolveUploadPath } from "@/app/lib/uploads";
+
+import { auth } from "@/auth";
+import { jsonError } from "@/app/lib/api";
+import {
+  deleteUploadedFileByFilename,
+  resolveUploadPath,
+} from "@/app/lib/uploads";
 
 const CONTENT_TYPES: Record<string, string> = {
   ".jpg": "image/jpeg",
@@ -21,11 +27,14 @@ const CONTENT_TYPES: Record<string, string> = {
   ".ogg": "audio/ogg",
   ".pdf": "application/pdf",
   ".doc": "application/msword",
-  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".docx":
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   ".xls": "application/vnd.ms-excel",
-  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".xlsx":
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   ".ppt": "application/vnd.ms-powerpoint",
-  ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  ".pptx":
+    "application/vnd.openxmlformats-officedocument.presentationml.presentation",
   ".zip": "application/zip",
   ".rar": "application/x-rar-compressed",
   ".7z": "application/x-7z-compressed",
@@ -42,11 +51,9 @@ const CONTENT_TYPES: Record<string, string> = {
   ".js": "application/javascript",
 };
 
+type RouteContext = { params: Promise<{ filename: string }> };
 
-export async function GET(
-  _request: Request,
-  context: { params: Promise<{ filename: string }> },
-) {
+export async function GET(_request: Request, context: RouteContext) {
   try {
     const { filename: rawFilename } = await context.params;
     const filename = decodeURIComponent(rawFilename);
@@ -78,6 +85,49 @@ export async function GET(
     }
 
     console.error("Failed to serve upload:", error);
-    return NextResponse.json({ error: "Не удалось загрузить файл" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Не удалось загрузить файл" },
+      { status: 500 },
+    );
+  }
+}
+
+/**
+ * Удаление файла (диск + БД). Query: lessonId / courseId — для проверки staff.
+ * Вызывается из редактора при удалении картинки из markdown.
+ */
+export async function DELETE(request: NextRequest, context: RouteContext) {
+  const session = await auth();
+  if (!session?.user?.id) {
+    return jsonError("Не авторизован", 401);
+  }
+  if (session.user.role !== "admin" && session.user.role !== "teacher") {
+    return jsonError("Нет прав", 403);
+  }
+
+  const { filename } = await context.params;
+  const lessonIdRaw = request.nextUrl.searchParams.get("lessonId");
+  const courseIdRaw = request.nextUrl.searchParams.get("courseId");
+  const lessonId =
+    lessonIdRaw && /^\d+$/.test(lessonIdRaw) ? Number(lessonIdRaw) : undefined;
+  const courseId =
+    courseIdRaw && /^\d+$/.test(courseIdRaw) ? Number(courseIdRaw) : undefined;
+
+  try {
+    await deleteUploadedFileByFilename(
+      filename,
+      { id: Number(session.user.id), role: session.user.role },
+      { lessonId, courseId },
+    );
+    return NextResponse.json({ message: "Файл удалён" });
+  } catch (error) {
+    if (error instanceof Error) {
+      if (error.cause === "invalid") return jsonError(error.message, 400);
+      if (error.cause === "not_found") return jsonError(error.message, 404);
+      if (error.cause === "no_access") return jsonError(error.message, 403);
+      if (error.cause === "conflict") return jsonError(error.message, 409);
+    }
+    console.error("DELETE /api/uploads/[filename]:", error);
+    return jsonError("Не удалось удалить файл", 500);
   }
 }

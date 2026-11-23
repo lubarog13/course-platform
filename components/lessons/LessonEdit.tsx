@@ -10,6 +10,7 @@ import type { File as FileModel, Video } from "@/app/lib/models";
 import type { CoursePartExtendedDto } from "@/app/lib/courseParts";
 import { Kbd } from "@/components/ui/kbd";
 import { ForwardRefEditor } from "@/components/base/ForwardRefEditor";
+import { deleteEditorUpload } from "@/components/base/mdxEditorRu";
 import FileUploader from "@/components/base/FileUploader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,8 @@ import { Badge } from "@/components/ui/badge";
 import { ButtonGroup } from "@/components/ui/button-group";
 import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import VideoEdit from "../editor/VideoEdit";
+import { toast } from "../ui/toast";
+
 import { isSortable } from "@dnd-kit/react/sortable";
 
 import {
@@ -32,11 +35,14 @@ import {
 } from "./lessonEditDraft";
 import { useHotkeys } from "react-hotkeys-hook";
 import {Select, SelectContent, SelectItem, SelectTrigger, SelectValue} from "@/components/ui/select";
-import { FileIcon, PlusIcon, XIcon } from "lucide-react";
+import { CircleQuestionMarkIcon, DownloadIcon, FileIcon, PlusIcon, XIcon } from "lucide-react";
 import TestQuestionEdit from "./TestQuestionEdit";
+import TestQuestionsFileHelpDialog from "./TestQuestionsFileHelpDialog";
+import LessonEditHelpDialog from "./LessonEditHelpDialog";
 import { DragDropProvider } from "@dnd-kit/react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { DEFAULT_QUESTIONS, fromCsv, fromXlsx, TestQuestionTransfer, toCsv, toTestQuestionTransfer, toXlsx, transferToTestQuestionDto } from "./testForm";
 
 
 type LessonEditProps = {
@@ -95,9 +101,17 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
   const openedLessonId = useRef<number | null>(null);
   const [courseParts, setCourseParts] = useState<CoursePartExtendedDto[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingFile, setLoadingFile] = useState(false);
+  const [fileParsing, setFileParsing] = useState(false);
+  const [file, setFile] = useState<File | null>(null);
+  const [parsingSuccess, setParsingSuccess] = useState(false);
+  const [parsingError, setParsingError] = useState<string | null>(null);
+  const [fileDownloading, setFileDownloading] = useState(false);
+  const [fileType, setFileType] = useState<"csv" | "xlsx">("csv");
   const [testQuestions, setTestQuestions] = useState<TestQuestionDto[]>(lesson.testQuestions || []);
 
   const [questionsChanged, setQuestionsChanged] = useState(false);
+  const [showHowDialog, setShowHowDialog] = useState(false);
   const draftLessonIdRef = useRef<number>(lesson.id < 1 ? -1 : lesson.id);
   const draftTimerRef = useRef<number | null>(null);
 
@@ -254,6 +268,53 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
       throw new Error(body?.error ?? "Не удалось сохранить видео");
     }
     return body as Video;
+  };
+
+
+  const loadFromFile = async (file: File) => {
+    setFileParsing(true);
+    setParsingError(null);
+    setParsingSuccess(false);
+    let isSuccess = true;
+    try {
+    let questions: TestQuestionTransfer[] = [];
+    if (fileType === "csv") {
+      questions = await fromCsv(file, lesson.id);
+    } else {
+      questions = await fromXlsx(file, lesson.id);
+    }
+    setTestQuestions(questions.map((q, i) => transferToTestQuestionDto(q, -(i + 1))));
+    } catch (error) {
+      isSuccess = false;
+      console.error(error);
+      setParsingError(error instanceof Error ? error.message : "Ошибка при загрузке вопросов");
+    } finally {
+      setParsingSuccess(isSuccess);
+      setFileParsing(false);
+      setLoadingFile(false);
+      setFile(null);
+    }
+  };
+
+  const downloadQuestions = async (fromDefault = false) => {
+    setFileDownloading(true);
+    const defaultQuestions = DEFAULT_QUESTIONS.map(i => ({...i, lessonId: lesson.id}));
+    if (fileType === "csv") {
+      const file = await toCsv(fromDefault ? defaultQuestions : testQuestions.map(toTestQuestionTransfer));
+      const url = URL.createObjectURL(file);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "questions.csv";
+      a.click();
+    } else {
+      const file = await toXlsx(fromDefault ? defaultQuestions : testQuestions.map(toTestQuestionTransfer));
+      const url = URL.createObjectURL(file);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "questions.xlsx";
+      a.click();
+    }
+    setFileDownloading(false);
   };
 
   const onTestQuestionSaved = (question: TestQuestionDto) => {
@@ -442,6 +503,7 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
               </h1>
               <Badge variant="secondary">{typeLabel(type)}</Badge>
             </div>
+            <div className="flex flex-col gap-2">
             <p className="text-muted-foreground text-sm">
               {isDirty || questionsChanged
                 ? <>Есть несохранённые изменения <Kbd>Ctrl+S</Kbd>
@@ -455,6 +517,14 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
                     ? `Восстановлен черновик от ${draftRestoredAt.toLocaleTimeString("ru-RU")}`
                     : "Изменения ещё не сохранялись"}
             </p>
+            <Button variant="ghost" type="button" className="w-fit pl-0" onClick={() => setShowHowDialog(true)}>
+              <CircleQuestionMarkIcon className="size-4" /> Как заполнять форму?
+            </Button>
+            <LessonEditHelpDialog
+              open={showHowDialog}
+              onOpenChange={setShowHowDialog}
+            />
+            </div>
           </div>
           <div className="flex items-center gap-2">
           <Button
@@ -597,6 +667,13 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
                 className="w-full"
                 ref={editorRef}
                 markdown={textContent ?? ""}
+                onImagesRemoved={(urls) => {
+                  for (const url of urls) {
+                    void deleteEditorUpload(url, {
+                      lessonId: lesson.id > 0 ? lesson.id : undefined,
+                    });
+                  }
+                }}
                 onChange={(value) => {
                   const prev = getValues("textContent");
                   if (value === prev) return;
@@ -822,6 +899,47 @@ export default function LessonEdit({ lesson, isNew,  onSaved, userId }: LessonEd
                   );
                 }}
               >
+            <div className="flex gap-4 flex-wrap mt-4 items-end">
+            <Button type="button" disabled={fileParsing} onClick={() => {
+              setLoadingFile(true);
+              setFile(null)
+              setFileParsing(false);
+              setParsingError(null);
+              setParsingSuccess(false);
+            }}>
+                {fileParsing ? "Загружаем вопросы..." : `Загрузить вопросы из ${fileType === "csv" ? "CSV" : "XLSX"}`}
+              </Button>
+              <Button type="button" variant="outline" disabled={fileDownloading} onClick={() => downloadQuestions()}>
+                {fileDownloading ? "Скачиваем вопросы..." : `Скачать вопросы в ${fileType === "csv" ? "CSV" : "XLSX"}`}
+              </Button>
+              <Field className="w-full sm:w-auto sm:flex-1">
+                <FieldLabel>Тип файла</FieldLabel>
+              <Select value={fileType} onValueChange={(value) => setFileType(value as "csv" | "xlsx")}>
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Выберите тип файла" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="csv">CSV</SelectItem>
+                  <SelectItem value="xlsx">XLSX</SelectItem>
+                </SelectContent>
+              </Select>
+              </Field>
+              <div className="flex w-full flex-wrap items-center gap-2">
+                <Button
+                  className="nowrap text-left"
+                  type="button"
+                  variant="link"
+                  onClick={() => downloadQuestions(true)}
+                >
+                  <DownloadIcon className="size-4" /> Скачать пример файла
+                </Button>
+                <TestQuestionsFileHelpDialog />
+              </div>
+              {loadingFile && <Input type="file" onChange={(e) => setFile(e.target.files?.[0] ?? null)} />}
+              {file && <Button type="button" onClick={() => loadFromFile(file)}>Загрузить вопросы</Button>}
+              {parsingSuccess && <p className="w-full rounded-xl border bg-green-200 p-2 text-green-800 border-green-300">Вопросы успешно загружены</p>}
+              {parsingError && <p className="w-full rounded-xl border bg-red-200 p-2 text-red-800 border-red-300">{parsingError}</p>}
+              </div>
             <div className="flex flex-col gap-4">
               {testQuestions.map((question, index) => (
                 <TestQuestionEdit

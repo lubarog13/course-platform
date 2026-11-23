@@ -251,7 +251,7 @@ body {
 .lesson-mdx-editor [class*="_toolbarRoot"] {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 1;
   border-bottom: 1px solid var(--border);
   background: color-mix(in oklab, var(--background) 92%, transparent);
   color: var(--foreground);

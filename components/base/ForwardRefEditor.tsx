@@ -2,7 +2,8 @@
 
 import dynamic from "next/dynamic";
 import { forwardRef } from "react";
-import type { MDXEditorMethods, MDXEditorProps } from "@mdxeditor/editor";
+import type { MDXEditorMethods } from "@mdxeditor/editor";
+import type { InitializedMDXEditorProps } from "./InitializedMDXEditor";
 
 const Editor = dynamic(() => import("./InitializedMDXEditor"), {
   ssr: false,
@@ -13,7 +14,9 @@ const Editor = dynamic(() => import("./InitializedMDXEditor"), {
   ),
 });
 
-export const ForwardRefEditor = forwardRef<MDXEditorMethods, MDXEditorProps>(
+type ForwardRefEditorProps = Omit<InitializedMDXEditorProps, "editorRef">;
+
+export const ForwardRefEditor = forwardRef<MDXEditorMethods, ForwardRefEditorProps>(
   (props, ref) => <Editor {...props} editorRef={ref} />,
 );
 

@@ -43,6 +43,7 @@ export default function MessagesSidebar({
   const refetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchParams = useSearchParams();
   const receiverId = searchParams.get('receiverId');
+  const isAdmin = searchParams.get('admin') === '1';
   const dialogPeerIds = useMemo(
     () => new Set(dialogs.map((dialog) => dialog.peer.id)),
     [dialogs],
@@ -97,7 +98,9 @@ export default function MessagesSidebar({
   }, [fetchReceivers, fetchDialogs]);
 
   useEffect(() => {
-    console.log('receiverId', receiverId);
+    if (isAdmin && dialogs.find((dialog) => dialog.peer.role === 'admin')) {
+      onDialogClick(dialogs.find((dialog) => dialog.peer.role === 'admin')!);
+    }
     if (dialogs.find((dialog) => dialog.peer.id.toString() === receiverId)) {
       onDialogClick(dialogs.find((dialog) => dialog.peer.id.toString() === receiverId)!);
     }

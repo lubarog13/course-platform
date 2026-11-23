@@ -118,6 +118,7 @@ export const mdxEditorRu: Translation = (key, defaultValue, interpolations = {})
 export async function uploadEditorImage(image: File): Promise<string> {
   const formData = new FormData();
   formData.append("file", image);
+  formData.append("used_in_markdown", "true");
   const response = await fetch("/api/uploads", {
     method: "POST",
     body: formData,
@@ -134,4 +135,74 @@ export async function uploadEditorImage(image: File): Promise<string> {
     throw new Error("Сервер не вернул URL файла");
   }
   return `/api/uploads/${encodeURIComponent(filename)}`;
+}
+
+/** URL картинок из markdown (`![...](url)` и `<img src="...">`). */
+export function extractMarkdownImageUrls(markdown: string): string[] {
+  const urls = new Set<string>();
+  const mdImage = /!\[[^\]]*]\((<[^>]+>|[^)\s]+)(?:\s+"[^"]*")?\)/g;
+  const htmlImage = /<img\b[^>]*\bsrc=["']([^"']+)["'][^>]*>/gi;
+
+  for (const match of markdown.matchAll(mdImage)) {
+    const raw = match[1]?.trim();
+    if (!raw) continue;
+    urls.add(raw.startsWith("<") && raw.endsWith(">") ? raw.slice(1, -1) : raw);
+  }
+  for (const match of markdown.matchAll(htmlImage)) {
+    const raw = match[1]?.trim();
+    if (raw) urls.add(raw);
+  }
+  return [...urls];
+}
+
+/** Картинки, которые были в prev, но исчезли в next. */
+export function diffRemovedImageUrls(prev: string, next: string): string[] {
+  const nextUrls = new Set(extractMarkdownImageUrls(next));
+  return extractMarkdownImageUrls(prev).filter((url) => !nextUrls.has(url));
+}
+
+/** Имя файла из `/api/uploads/...` или абсолютного URL. */
+export function filenameFromUploadUrl(url: string): string | null {
+  const trimmed = url.trim();
+  if (!trimmed) return null;
+  try {
+    const pathname = trimmed.startsWith("http")
+      ? new URL(trimmed).pathname
+      : trimmed;
+    const match = pathname.match(/\/api\/uploads\/([^/?#]+)/);
+    if (match?.[1]) return decodeURIComponent(match[1]);
+    const base = pathname.split(/[/\\]/).pop();
+    return base && base !== "." && base !== ".." ? decodeURIComponent(base) : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Удаляет файл на сервере после удаления картинки из редактора. */
+export async function deleteEditorUpload(
+  url: string,
+  options: { lessonId?: number; courseId?: number } = {},
+): Promise<void> {
+  const filename = filenameFromUploadUrl(url);
+  if (!filename) return;
+
+  const params = new URLSearchParams();
+  if (options.lessonId != null && options.lessonId > 0) {
+    params.set("lessonId", String(options.lessonId));
+  }
+  if (options.courseId != null && options.courseId > 0) {
+    params.set("courseId", String(options.courseId));
+  }
+  const query = params.toString();
+  const response = await fetch(
+    `/api/uploads/${encodeURIComponent(filename)}${query ? `?${query}` : ""}`,
+    { method: "DELETE" },
+  );
+  if (!response.ok && response.status !== 404) {
+    console.error(
+      "deleteEditorUpload failed:",
+      response.status,
+      await response.text().catch(() => ""),
+    );
+  }
 }

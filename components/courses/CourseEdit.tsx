@@ -19,6 +19,7 @@ import { Field, FieldError, FieldLabel } from "@/components/ui/field";
 import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { ForwardRefEditor } from "../base/ForwardRefEditor";
+import { deleteEditorUpload } from "@/components/base/mdxEditorRu";
 import { CircleQuestionMark, PlusIcon, XIcon } from "lucide-react";
 import FileUploader from "@/components/base/FileUploader";
 import type { File as FileModel } from "@/app/lib/models";
@@ -31,6 +32,7 @@ import { DragDropProvider } from "@dnd-kit/react";
 import { isSortable } from "@dnd-kit/react/sortable";
 import { useHotkeys } from "react-hotkeys-hook";
 import CoursePartEdit from "./CoursePartEdit";
+import CourseEditHelpDialog from "./CourseEditHelpDialog";
 import type { User } from "@/app/lib/models";
 import Link from "next/link";
 import { useSession } from "next-auth/react";
@@ -139,6 +141,7 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
     );
     const [courseParts, setCourseParts] = useState<CoursePartEditData[]>(course.courseParts);
     const [coursePartsChanged, setCoursePartsChanged] = useState(false);
+    const [showHowDialog, setShowHowDialog] = useState(false);
     const [tags, setTags] = useState<TagOption[]>([]);
     const [categories, setCategories] = useState<{ name: string, id: number, slug: string }[]>([]);
     const [loading, setLoading] = useState(true);
@@ -541,6 +544,7 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
                 Редактор курса
               </h1>
             </div>
+            <div className="flex flex-col gap-2">
             <p className="text-muted-foreground text-sm">
               {isDirty || coursePartsChanged
                 ? <>Есть несохранённые изменения <Kbd>Ctrl+S</Kbd>
@@ -556,6 +560,19 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
                       ? `Сохранено · ${new Date(course.updatedAt).toLocaleString("ru-RU")}`
                       : "Изменения ещё не сохранялись"}
             </p>
+            <Button
+              variant="ghost"
+              type="button"
+              className="w-fit pl-0"
+              onClick={() => setShowHowDialog(true)}
+            >
+              <CircleQuestionMark className="size-4" /> Как заполнять форму?
+            </Button>
+            <CourseEditHelpDialog
+              open={showHowDialog}
+              onOpenChange={setShowHowDialog}
+            />
+            </div>
           </div>
           <div className="flex items-center gap-2">
           <Button
@@ -607,6 +624,13 @@ export default function CourseEdit({ course, isNew, onSaved, userId, certificate
                 className="w-full"
                 ref={editorRef}
                 markdown={description ?? ""}
+                onImagesRemoved={(urls) => {
+                  for (const url of urls) {
+                    void deleteEditorUpload(url, {
+                      courseId: course.id > 0 ? course.id : undefined,
+                    });
+                  }
+                }}
                 onChange={(value) => {
                   const prev = getValues("description");
                   if (value === prev) return;

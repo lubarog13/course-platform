@@ -98,11 +98,19 @@ export default function CourseView() {
                 return prev;
             }
             const raw = searchParams?.get("lessonId");
+            const rawPartId = searchParams?.get("partId");
             const fromUrl = raw ? Number.parseInt(raw, 10) : NaN;
+            const fromUrlPartId = rawPartId ? Number.parseInt(rawPartId, 10) : NaN;
             const urlIdx = lessonsList.findIndex((lesson) => lesson.id === fromUrl);
             if (urlIdx >= 0) {
                 setCurrentLessonIndex(urlIdx);
                 return lessonsList[urlIdx]!.id;
+            }
+            const partIdx = courseParts.findIndex((part) => part.id === fromUrlPartId);
+            if (partIdx >= 0) {
+                const firstLessonId = courseParts[partIdx]!.lessons[0]!.id;
+                setCurrentLessonIndex(lessonsList.findIndex((lesson) => lesson.id === firstLessonId));
+                return firstLessonId;
             }
             setCurrentLessonIndex(-1);
             return null;

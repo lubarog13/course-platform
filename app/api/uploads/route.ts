@@ -5,6 +5,7 @@ import path from "path";
 import { getUploadsDir, } from "@/app/lib/uploads";
 import fs from "node:fs/promises";
 import {auth} from "@/auth";
+import { jsonError } from "@/app/lib/api";
 
 // Возможные MIME-типы файлов для File (js):
 const FILE_MIME_TYPES = [
@@ -54,9 +55,23 @@ const videoTypes = [
 ];
 
 
+function isAuthorizedCron(request: NextRequest): boolean {
+    const secret = process.env.CRON_SECRET?.trim();
+    if (!secret) return false;
+  
+    const authHeader = request.headers.get("authorization");
+    if (authHeader === `Bearer ${secret}`) return true;
+  
+    const cronHeader = request.headers.get("x-cron-secret");
+    return cronHeader === secret;
+  }
+  
+
+
 export async function POST(request: NextRequest) {
     const formData = await request.formData();
     const fileData = formData.get("file") as unknown as File;
+    const usedInMarkdown = formData.get("used_in_markdown") === "true";
     if (!fileData) {
         return NextResponse.json({ error: "Не загружен файл" }, { status: 400 });
     }
@@ -90,7 +105,67 @@ export async function POST(request: NextRequest) {
             mimeType: type,
             createdAt: new Date(),
             uploadedBy: currentUser,
+            usedInMarkdown: usedInMarkdown,
         }
     });
     return NextResponse.json(fileRecord);
+}
+
+export async function DELETE(request: NextRequest) {
+    if (!isAuthorizedCron(request)) {
+        return jsonError("Не авторизован", 401);
+      }
+
+    const files = await prisma.file.findMany({
+        where: {
+            createdAt: {
+                lt: new Date(Date.now() - 1000 * 60 * 60 * 24),
+            },
+            usedInMarkdown: false,
+        },
+        include: {
+            certificates: {
+                select: {
+                    id: true,
+                }
+            },
+            messageAttachments: {
+                select: {
+                    id: true,
+                }
+            },
+            courseCovers: {
+                select: {
+                    id: true,
+                }
+            },
+            userSignatures: {
+                select: {
+                    id: true,
+                }
+            },
+            attachments: {
+                select: {
+                    id: true,
+                }
+            },
+            userTestAnswers: {
+                select: {
+                    id: true,
+                }
+            },
+        }
+        
+    });
+    for (const file of files) {
+        if (file.certificates.length === 0 && file.messageAttachments.length === 0 && file.courseCovers.length === 0 && file.userSignatures.length === 0 && file.attachments.length === 0 && file.userTestAnswers.length === 0) {
+            await fs.unlink(file.url);
+            await prisma.file.delete({
+                where: {
+                    id: file.id,
+                }
+            });
+        }
+    }
+    return NextResponse.json({ message: "Файлы удалены" });
 }

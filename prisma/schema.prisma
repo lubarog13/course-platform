@@ -127,6 +127,7 @@ model File {
   mimeType     String   @map("mime_type")
   sizeBytes    Int      @map("size_bytes")
   uploadedBy   Int      @map("uploaded_by")
+  usedInMarkdown Boolean @default(false) @map("used_in_markdown")
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz
 
   uploader           User                @relation(fields: [uploadedBy], references: [id])

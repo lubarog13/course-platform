@@ -31,15 +31,28 @@ export default async function Home() {
   return (
     <main className="w-full">
       <div className="mx-auto w-full max-w-7xl relative px-4 py-8">
-      <Image src="/images/cover.png" alt="Обложка сайта" width={1000} height={1000} className="w-full h-auto rounded-lg" />
+      <Image src="/images/cover.png" alt="Обложка сайта" width={1000} height={1000} className="w-full min-h-[600px] object-cover object-left rounded-lg hidden md:block" />
+      <Image src="/images/cover_mobile.png" alt="Обложка сайта" width={1000} height={1000} className="w-full max-h-[500px] h-auto object-cover object-center rounded-lg block md:hidden" />
+      <div className="absolute top-0 left-0 sm:left-4 pl-4 pr-4 md:pr-0 right-0 md:right-auto md:pl-22 w-full sm:w-[calc(100%-5rem)] h-full flex flex-col justify-center items-center sm:items-start">
+      <div className="flex items-center gap-5">
+      <Image src="/images/logo.svg" alt="Логотип" width={100} height={100} className="sm:w-40 sm:h-40 w-20 h-20" />  
+      <h1 className="sm:text-3xl text-2xl font-semibold font-lora text-[#10375d] pl-5 border-l-2 border-[#10375d] sm:h-30 h-20 flex flex-col justify-center">
+        Библейские<br /> курсы
+      </h1>
+      </div>
+      <p className="sm:text-[1.6rem] text-[1.2rem] mt-2 pl-4 mb-8 font-inter text-[#10375d] opacity-90">
+        Изучайте писание онлайн
+      </p>
       <Button
-      className="absolute top-2/3 left-24 -translate-y-1/2 bg-yellow-500 hover:bg-yellow-600 text-white
+      className="bg-yellow-500 hover:bg-yellow-600 text-white
       rounded-full px-6 py-6 text-lg font-medium animate-pop 
+      sm:w-fit w-[85%] max-w-[300px]
       "
       style={{ animationIterationCount: "infinite", animationDuration: "2s" }}
       >
         Начать обучение <ArrowRight className="w-4 h-4" />
       </Button>
+      </div>
       </div>
       <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
       <MainPageSearch />

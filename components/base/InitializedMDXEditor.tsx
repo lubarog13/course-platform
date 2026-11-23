@@ -1,6 +1,6 @@
 "use client";
 
-import type { ForwardedRef } from "react";
+import { useRef, type ForwardedRef } from "react";
 import { useTheme } from "next-themes";
 import {
   MDXEditor,
@@ -25,7 +25,11 @@ import {
   AdmonitionDirectiveDescriptor,
 } from "@mdxeditor/editor";
 import "@mdxeditor/editor/style.css";
-import { mdxEditorRu, uploadEditorImage } from "./mdxEditorRu";
+import {
+  diffRemovedImageUrls,
+  mdxEditorRu,
+  uploadEditorImage,
+} from "./mdxEditorRu";
 
 const lessonEditorPlugins = [
   toolbarPlugin({
@@ -61,16 +65,39 @@ const lessonEditorPlugins = [
   markdownShortcutPlugin(),
 ];
 
+export type InitializedMDXEditorProps = {
+  editorRef: ForwardedRef<MDXEditorMethods> | null;
+  /** Вызывается, когда из markdown исчезли URL картинок (кнопка, Backspace, source). */
+  onImagesRemoved?: (urls: string[]) => void;
+} & MDXEditorProps;
+
 export default function InitializedMDXEditor({
   editorRef,
   className,
   contentEditableClassName,
   translation = mdxEditorRu,
   markdown,
+  onChange,
+  onImagesRemoved,
   ...props
-}: { editorRef: ForwardedRef<MDXEditorMethods> | null } & MDXEditorProps) {
+}: InitializedMDXEditorProps) {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === "dark";
+  const prevMarkdownRef = useRef(markdown ?? "");
+
+  const handleChange = (
+    value: string,
+    initialMarkdownNormalize: boolean,
+  ) => {
+    if (!initialMarkdownNormalize && onImagesRemoved) {
+      const removed = diffRemovedImageUrls(prevMarkdownRef.current, value);
+      if (removed.length > 0) {
+        onImagesRemoved(removed);
+      }
+    }
+    prevMarkdownRef.current = value;
+    onChange?.(value, initialMarkdownNormalize);
+  };
 
   return (
     <MDXEditor
@@ -91,6 +118,7 @@ export default function InitializedMDXEditor({
         .join(" ")}
       {...props}
       markdown={markdown ?? ""}
+      onChange={handleChange}
       ref={editorRef}
     />
   );

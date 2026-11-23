@@ -4,10 +4,13 @@
 #      sudo chmod 600 /etc/course-platform/cron.env   # заполните APP_URL и CRON_SECRET
 #   3. sudo cp scripts/cron-deadline-reminders.sh /opt/course-platform/scripts/
 #      sudo chmod 755 /opt/course-platform/scripts/cron-deadline-reminders.sh
-#   4. sudo cp deploy/cron.d/course-platform-deadlines /etc/cron.d/course-platform-deadlines
+#   4. sudo cp scripts/cron-file-cleaner.sh /opt/course-platform/scripts/
+#      sudo chmod 755 /opt/course-platform/scripts/cron-file-cleaner.sh
+#   5. sudo cp deploy/cron.d/course-platform-deadlines /etc/cron.d/course-platform-deadlines
 #      sudo chmod 644 /etc/cron.d/course-platform-deadlines
-#
-# Логи: /var/log/course-platform-deadline-cron.log
+#   6. sudo cp deploy/cron.d/course-platform-file-cleaner /etc/cron.d/course-platform-file-cleaner
+#      sudo chmod 644 /etc/cron.d/course-platform-file-cleaner
+# Логи: /var/log/course-platform-deadline-cron.log, /var/log/course-platform-file-cleaner-cron.log
 # Время: системный TZ (для Москвы: timedatectl set-timezone Europe/Moscow)
 
 SHELL=/bin/bash
@@ -16,3 +19,6 @@ MAILTO=""
 
 # Каждый день в 09:00 — напоминания о дедлайнах (in-app + email)
 0 9 * * * root /opt/course-platform/scripts/cron-deadline-reminders.sh >> /var/log/course-platform-deadline-cron.log 2>&1
+
+# Каждую неделю в воскресенье в 00:00 — удаление старых файлов
+0 0 * * 0 root /opt/course-platform/scripts/cron-file-cleaner.sh >> /var/log/course-platform-file-cleaner-cron.log 2>&1

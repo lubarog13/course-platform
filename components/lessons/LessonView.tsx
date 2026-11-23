@@ -252,10 +252,12 @@ export default function LessonView({
     maxScore: number | null;
     passed: boolean | null;
   }) => {
-    const shouldComplete = result.passed === true || result.passed === null;
-    // баллы пишет сервер при submit попытки; клиент только completed/timeSpent
+    // Зелёная галочка только при зачёте (score ≥ проходной балл).
+    // null = ждёт ручную проверку; false = не сдан — не помечаем выполненным.
+    const shouldComplete = result.passed === true;
+    completedRef.current = shouldComplete;
     flushSessionProgress({
-      completed: shouldComplete || completedRef.current,
+      completed: shouldComplete,
     });
   };
 

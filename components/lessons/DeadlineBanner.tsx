@@ -236,7 +236,7 @@ export default function DeadlineBanner({
             <span>
               Ваш запрос на продление срока сдачи {targetLabel} на{" "}
               {currentRequest.requestedDays} дней был отклонен. Вы можете
-              отправить запрос заново или свяжитесь с администрацией платформы.
+              отправить запрос заново или <a href="/user/messages?admin=1" className="text-red-500 hover:text-red-500/80">свяжитесь с администрацией платформы</a>.
             </span>
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
@@ -266,7 +266,7 @@ export default function DeadlineBanner({
             <span>
               Запрос на продление срока сдачи {targetLabel} на{" "}
               {currentRequest.requestedDays} дней истек. Вы можете отправить
-              запрос заново или свяжитесь с администрацией платформы.
+              запрос заново или <a href="/user/messages?admin=1" className="text-red-500 hover:text-red-500/80">свяжитесь с администрацией платформы</a>.
             </span>
           </div>
           <div className="flex flex-col sm:flex-row gap-2">
