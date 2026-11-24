@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { LessonFullDto } from "@/app/lib/lessons";
 import { LessonDto } from "@/app/lib/courseParts";
 import { Button } from "../ui/button";
-import { ArrowLeftIcon, ArrowRightIcon, Ban, CheckCircleIcon, EditIcon, FileIcon, RefreshCcwIcon } from "lucide-react";
+import { ArrowLeftIcon, ArrowRightIcon, Ban, CheckCircleIcon, EditIcon, FileIcon, FlagIcon, RefreshCcwIcon } from "lucide-react";
 import MarkdownContent from "../base/MarkdownContent";
 import TestView from "./TestView";
 import AttemptsList from "./AttemtsList";
@@ -18,6 +18,8 @@ import { AlertCircleIcon } from "lucide-react";
 import CertificateModal from "../certificates/CertificateModal";
 import { cn } from "@/lib/utils";
 import DeadlineBanner from "./DeadlineBanner";
+import ReportDialog from "../messages/ReportDialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 type LessonViewProps = {
   courseId: number;
@@ -63,7 +65,7 @@ export default function LessonView({
   const [error, setError] = useState<string | null>(null);
   const [showCertificateModal, setShowCertificateModal] = useState(false);
   const router = useRouter();
-
+  const [isReportOpen, setIsReportOpen] = useState(false);
   const progressIdRef = useRef<number | null>(null);
   const enteredAtRef = useRef<number>(new Date().getTime());
   const baseTimeSpentRef = useRef(0);
@@ -331,9 +333,7 @@ export default function LessonView({
       </div>
       <div className="flex-1 p-6 relative">
         {lesson.required && (
-          <div className={cn("flex items-center gap-2 text-gray-700 dark:text-gray-300 mb-4 rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-sm", lesson.userProgress?.completed ? "border-green-500/30 bg-green-500/5" : "border-yellow-500/30 bg-yellow-500/5",
-            canEdit? 'mt-8' : ''
-          )}>
+          <div className={cn("flex items-center mt-8 mr-10 gap-2 text-gray-700 dark:text-gray-300 mb-4 rounded-lg border border-yellow-500/30 bg-yellow-500/5 px-3 py-2 text-sm", lesson.userProgress?.completed ? "border-green-500/30 bg-green-500/5" : "border-yellow-500/30 bg-yellow-500/5",)}>
             {lesson.userProgress?.completed ? <CheckCircleIcon className="w-4 h-4 text-green-500" /> : <AlertCircleIcon className="w-4 h-4 text-yellow-500" />}
             <span>Этот урок является обязательным для прохождения</span>
           </div>
@@ -345,7 +345,7 @@ export default function LessonView({
             deadlineDays={deadlineDays ?? 0}
           />
         )}
-        <div className="text-gray-700 dark:text-gray-300 mb-4">{lesson.description}</div>
+        <div className="text-gray-700 dark:text-gray-300 mb-4 pr-10">{lesson.description}</div>
         {lesson.attachment && (
           <div className="flex items-center gap-2">
             <FileIcon className="w-4 h-4" />
@@ -359,7 +359,7 @@ export default function LessonView({
           </div>
         )}
         {lesson.type === "text" && (
-          <MarkdownContent nodes={lesson.textContent || ""} />
+          <MarkdownContent className="pr-10" nodes={lesson.textContent || ""} />
         )}
         {lesson.type === "test" &&
           (canEdit ? (
@@ -387,7 +387,7 @@ export default function LessonView({
           />
         )}
 
-        {canEdit && (
+        {canEdit ? (
           <Button
             variant="secondary"
             size="icon-lg"
@@ -396,8 +396,27 @@ export default function LessonView({
           >
             <EditIcon className="w-10 h-10" />
           </Button>
-        )}
+        ) : (
+          <Tooltip>
+            <TooltipTrigger render={
+              <Button
+                variant="secondary"
+                size="icon-lg"
+                className="absolute right-4 top-4 cursor-pointer rounded-full"
+                onClick={() => setIsReportOpen(true)}
+              >
+                <FlagIcon className="w-10 h-10" />
+              </Button>
+            } />
+            <TooltipContent>
+              Пожаловаться на урок
+            </TooltipContent>
+          </Tooltip>
+          )}
       </div>
+      {isReportOpen && (
+        <ReportDialog lessonId={lessonId} type="lesson" isOpen={isReportOpen} onOpenChange={setIsReportOpen} />
+      )}
     </div>
   );
 }

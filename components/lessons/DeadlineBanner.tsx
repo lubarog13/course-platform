@@ -195,7 +195,7 @@ export default function DeadlineBanner({
   return (
     <>
       {currentRequest == null && (
-        <div className="text-gray-700 dark:text-gray-300 mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
+        <div className="text-gray-700 dark:text-gray-300 mb-4 mr-10 flex flex-wrap items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
           <Ban className="w-4 h-4 text-destructive shrink-0" />
           <span className="flex-1">
             Срок прохождения истёк {deadlineValid?.toLocaleString("ru-RU")}
@@ -211,7 +211,7 @@ export default function DeadlineBanner({
         </div>
       )}
       {currentRequest?.status === "pending" && (
-        <div className="text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2 rounded-lg border border-green-300/30 bg-green-50 px-3 py-2 text-sm dark:bg-green-950/20">
+        <div className="text-gray-700 dark:text-gray-300 mb-4 mr-10 flex items-center gap-2 rounded-lg border border-green-300/30 bg-green-50 px-3 py-2 text-sm dark:bg-green-950/20">
           <CheckCircleIcon className="w-4 h-4 text-green-500 shrink-0" />
           <span>
             Вы отправили запрос на продление срока сдачи {targetLabel} на{" "}
@@ -220,7 +220,7 @@ export default function DeadlineBanner({
         </div>
       )}
       {currentRequest?.status === "completed" && (
-        <div className="text-gray-700 dark:text-gray-300 mb-4 flex items-center gap-2 rounded-lg border border-green-300/30 bg-green-50 px-3 py-2 text-sm dark:bg-green-950/20">
+        <div className="text-gray-700 dark:text-gray-300 mb-4 mr-10 flex items-center gap-2 rounded-lg border border-green-300/30 bg-green-50 px-3 py-2 text-sm dark:bg-green-950/20">
           <CheckCircleIcon className="w-4 h-4 text-green-500 shrink-0" />
           <span>
             Ваш запрос на продление срока сдачи {targetLabel} на{" "}
@@ -230,7 +230,7 @@ export default function DeadlineBanner({
         </div>
       )}
       {currentRequest?.status === "dropped" && (
-        <div className="text-gray-700 dark:text-gray-300 mb-4 rounded-lg border border-red-300/30 bg-red-50 px-3 py-2 text-sm dark:bg-red-950/20">
+        <div className="text-gray-700 dark:text-gray-300 mb-4 mr-10 rounded-lg border border-red-300/30 bg-red-50 px-3 py-2 text-sm dark:bg-red-950/20">
           <div className="flex items-center gap-2 mb-2">
             <XCircleIcon className="w-4 h-4 text-red-500 shrink-0" />
             <span>

@@ -3,11 +3,10 @@
 import { Input } from "@/components/ui/input";
 import { FieldGroup, Field, FieldLabel, FieldDescription } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
-import { signUpSchema } from "@/app/lib/auth/form";
+import { signUpSchema, type SignUpFormValues } from "@/app/lib/auth/form";
 import { signUpAction, updateUserAction } from "@/app/lib/auth/actions";
-import { Controller, useForm } from "react-hook-form";
+import { Controller, useForm, type Resolver } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { z } from "zod";
 import { useEffect, useState, type Ref } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, XIcon } from "lucide-react";
@@ -26,12 +25,8 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "../ui/switch";
-
-function filePublicUrl(file: Pick<FileModel, "url">) {
-  const filename =
-    typeof file.url === "string" ? file.url.split(/[/\\]/).pop() : undefined;
-  return filename ? `/api/uploads/${encodeURIComponent(filename)}` : null;
-}
+import { Skeleton } from "../ui/skeleton";
+import { filePublicUrl } from "@/lib/utils";
 
 function scrollToTop() {
   window.scrollTo({
@@ -75,8 +70,10 @@ export function SignupForm({
   const [saved, setSaved] = useState(false);
   const [signatureFile, setSignatureFile] = useState<FileModel | null>(null);
   const [signatureLoading, setSignatureLoading] = useState(false);
-  const form = useForm<z.infer<typeof signUpSchema>>({
-    resolver: zodResolver(signUpSchema),
+  const [avatarFile, setAvatarFile] = useState<FileModel | null>(null);
+  const [avatarLoading, setAvatarLoading] = useState(false);
+  const form = useForm<SignUpFormValues>({
+    resolver: zodResolver(signUpSchema) as Resolver<SignUpFormValues>,
     defaultValues: {
       email: user?.email ?? "",
       // в режиме редактирования пароль не меняется — подставляем валидный placeholder
@@ -91,11 +88,13 @@ export function SignupForm({
       acceptEmailNotifications: user?.agreement?.accept_email_notifications ?? true,
       acceptEmailPromotions: user?.agreement?.accept_email_promotions ?? true,
       signatureId: user?.signatureId ?? null,
+      avatarUrl: user?.avatarUrl ?? null,
+      avatarFileId: user?.avatarFileId ?? null,
     },
   });
 
   const signatureId = form.watch("signatureId");
-
+  const avatarFileId = form.watch("avatarFileId");
   const resolveSignatureFile = async (
     id: number,
     signal: AbortSignal,
@@ -104,6 +103,18 @@ export function SignupForm({
     if (!res.ok) {
       if (res.status === 404) return null;
       throw new Error("Не удалось загрузить файл подписи");
+    }
+    return (await res.json()) as FileModel;
+  };
+
+  const resolveAvatarFile = async (
+    id: number,
+    signal: AbortSignal,
+  ): Promise<FileModel | null> => {
+    const res = await fetch(`/api/file/${id}`, { signal });
+    if (!res.ok) {
+      if (res.status === 404) return null;
+      throw new Error("Не удалось загрузить файл");
     }
     return (await res.json()) as FileModel;
   };
@@ -132,12 +143,47 @@ export function SignupForm({
       .finally(() => {
         if (!abortController.signal.aborted) setSignatureLoading(false);
       });
+      
+
+    
 
     return () => abortController.abort();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload only when signatureId changes
   }, [editMode, signatureId]);
 
-  async function onSubmit(values: z.infer<typeof signUpSchema>) {
+  useEffect(() => {
+    if (!editMode || !avatarFileId) {
+      setAvatarFile(null);
+      setAvatarLoading(false);
+      return;
+    }
+    if (avatarFile?.id === avatarFileId) return;
+
+    const abortController = new AbortController();
+    setAvatarLoading(true);
+    resolveAvatarFile(avatarFileId, abortController.signal)
+      .then((file) => {
+        if (!abortController.signal.aborted) setAvatarFile(file);
+      })
+      .catch((err: unknown) => {
+        if (abortController.signal.aborted) return;
+        setAvatarFile(null);
+        const message =
+          err instanceof Error ? err.message : "Не удалось загрузить файл аватара";
+        setError(message);
+      })
+      .finally(() => {
+        if (!abortController.signal.aborted) setAvatarLoading(false);
+      });
+      
+
+    
+
+    return () => abortController.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload only when avatarFileId changes
+  }, [editMode, avatarFileId]);
+
+  async function onSubmit(values: SignUpFormValues) {
     setIsLoading(true);
     setError(null);
     try {
@@ -154,9 +200,11 @@ export function SignupForm({
             acceptEmailNotifications: values.acceptEmailNotifications,
             acceptEmailPromotions: values.acceptEmailPromotions,
             signatureId: values.signatureId ?? null,
+            avatarFileId: values.avatarFileId ?? null,
           })
         : await signUpAction(values);
       if (!result.ok) {
+        console.error(result.error);
         setError(result.error);
         return;
       }
@@ -278,14 +326,36 @@ export function SignupForm({
             <FieldError message={errors.email?.message} />
           </Field>
           {editMode && (adminEdit || teacherEdit) && (
+            <>
+            <Field className="sm:col-span-2">
+              <FieldLabel>Аватар</FieldLabel>
+              <FieldDescription>Прикрепите файл с аватаром в формате png, jpg, jpeg, gif, webp. Если вы не хотите использовать аватар, оставьте поле пустым, тогда будет использоваться стандартный аватар платформы.</FieldDescription>
+              <FileUploader
+                onUploaded={(files: FileModel[]) => {
+                  const file = files[0] ?? null;
+                  setAvatarFile(file);
+                  form.setValue("avatarFileId", file?.id ?? null, {
+                    shouldDirty: true,
+                  });
+                  form.setValue("avatarUrl", file?.url ?? null, {
+                    shouldDirty: true,
+                  });
+                }}
+              />
+              <FieldError message={errors.avatarUrl?.message} />
+              {form.getValues("avatarFileId") && 
+              avatarLoading && (
+                <Skeleton className="w-20 max-w-20 h-20 object-cover rounded-lg" />
+              )
+              }
+              {avatarFile && <img src={filePublicUrl('', avatarFile as FileModel) || ''} alt="Аватар" className="w-20 max-w-20 h-20 object-cover rounded-lg" />}
+            </Field>
         <Field className="sm:col-span-2">
           <FieldLabel>Подпись для сертификата</FieldLabel>
           <FieldDescription>Прикрепите файл с подписью в формате svg. Если вы не хотите использовать подпись, оставьте поле пустым, тогда будет использоваться стандартная подпись платформы.</FieldDescription>
           {signatureLoading ? (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="size-4 animate-spin" />
-              Загрузка подписи…
-            </div>
+                        <Skeleton className="w-full h-16 object-cover rounded-lg" />
+
           ) : signatureFile ? (
             <div className="relative flex items-center gap-3 rounded-lg border px-3 py-2">
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -326,6 +396,7 @@ export function SignupForm({
             />
           )}
         </Field>
+        </>
       )}
           {!editMode && (
             <>

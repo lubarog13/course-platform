@@ -1,7 +1,7 @@
 "use client";
 import { CourseDto } from "@/app/lib/courses";
 import MarkdownContent from "@/components/base/MarkdownContent";
-import { Star, LockIcon, PlayIcon, XIcon, PencilIcon } from "lucide-react";
+import { Star, LockIcon, PlayIcon, XIcon, PencilIcon, FlagIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
@@ -13,6 +13,7 @@ import { useSession } from "next-auth/react";
 import CourseReviewModal from "@/components/courses/CourseReviewModal";
 import { CourseReviewCarousel } from "./CourseReviewCarousel";
 import { ReviewDto } from "@/app/lib/reviews";
+import ReportDialog from "../messages/ReportDialog";
 
 export function CoursePreview({ course }: { course: CourseDto }) {
   const router = useRouter();
@@ -73,6 +74,7 @@ export function CoursePreview({ course }: { course: CourseDto }) {
   const [isEnrollmentLoading, setIsEnrollmentLoading] = useState(false);
   const [isDroppedDialogOpen, setIsDroppedDialogOpen] = useState(false);
   const [isReviewOpen, setIsReviewOpen] = useState(false);
+  const [isReportOpen, setIsReportOpen] = useState(false);
 
   const canReview =
     session?.user?.id != null &&
@@ -119,6 +121,7 @@ export function CoursePreview({ course }: { course: CourseDto }) {
 
   return (
     <>
+    <ReportDialog courseId={course.id} type="course" isOpen={isReportOpen} onOpenChange={setIsReportOpen} />
     <Dialog open={isEnrollmentDialogOpen} onOpenChange={setIsEnrollmentDialogOpen}>
       <DialogContent className="max-w-md">
         <DialogHeader>
@@ -143,8 +146,8 @@ export function CoursePreview({ course }: { course: CourseDto }) {
           .catch(() => {});
         router.refresh();
       }}
-    />
-    <Dialog open={isDroppedDialogOpen} onOpenChange={setIsDroppedDialogOpen}>
+      />
+      <Dialog open={isDroppedDialogOpen} onOpenChange={setIsDroppedDialogOpen}>
       <DialogContent className="max-w-md">
         <DialogHeader>
           <DialogTitle>Заявка отклонена</DialogTitle>
@@ -258,6 +261,10 @@ export function CoursePreview({ course }: { course: CourseDto }) {
               router.refresh();
             }}
           />
+          <hr className="my-4 border-gray-200 dark:border-gray-700" />
+          <Button variant="ghost" className="text-gray-500 dark:text-gray-400" onClick={() => setIsReportOpen(true)}>
+            <FlagIcon className="w-4 h-4 inline-block mr-2" /> Пожаловаться на курс
+          </Button>
         </div>
         <div className="grid grid-cols-2 md:block fixed bottom-0 left-0 right-0 bg-background/80 backdrop-blur-sm w-full md:static md:border-l border-t md:border-t-0 border-gray-200 md:border-gray-300 dark:border-gray-700 p-4 md:p-0 md:pl-8 md:w-1/3 max-h-[300px] md:max-h-none">
           <img

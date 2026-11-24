@@ -4,7 +4,8 @@ import { ReviewDto } from "@/app/lib/reviews";
 import { Rating } from "../ui/rating";
 import { cn } from "@/lib/utils";
 import { Button } from "../ui/button";
-import { Trash2Icon } from "lucide-react";
+import { Trash2Icon, FlagIcon } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
 
 /** Sample для skullet — форма карточки отзыва при загрузке. */
 export const SAMPLE_REVIEW: ReviewDto = {
@@ -30,17 +31,19 @@ export const CourseReviewCard = ({
   modal,
   canDelete,
   onClick,
+  setReportOpen,
 }: {
   review: ReviewDto;
   modal: boolean;
   canDelete: boolean;
   onClick: () => void;
+  setReportOpen: () => void;
 }) => {
   return (
     <>
       <Card
         className={cn(
-          "max-w-92 w-full mx-auto p-4 rounded-3xl ring-0 border",
+          "w-full mx-auto p-4 rounded-3xl ring-0 border",
           modal ? "border-none" : "",
         )}
         onClick={modal ? undefined : onClick}
@@ -74,11 +77,29 @@ export const CourseReviewCard = ({
               {review.comment}
             </p>
           </div>
-          <div className="flex sm:flex-col lg:flex-row items-center lg:items-center sm:items-start gap-2">
-            <Rating value={review.rating} readOnly />
+          <div className="flex items-center lg:items-center gap-2">
+            <Rating value={review.rating} size={14} readOnly />
             <p className="text-sm text-muted-foreground">
               {review.rating} из 5
             </p>
+            <Tooltip>
+              <TooltipTrigger render={<Button
+              variant="outline"
+              size="icon"
+              className="ml-auto"
+              type="button"
+              onClick={(event) => {
+                event.stopPropagation();
+                setReportOpen();
+              }}
+            >
+              <FlagIcon className="w-10 h-10" />
+            </Button>
+            } />
+            <TooltipContent>
+              Пожаловаться на отзыв
+            </TooltipContent>
+            </Tooltip>
           </div>
           {canDelete && (
             <Button

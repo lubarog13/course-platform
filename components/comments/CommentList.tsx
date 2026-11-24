@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
-import { PencilIcon, TrashIcon, UserCircle } from "lucide-react";
+import { Flag, PencilIcon, TrashIcon, UserCircle } from "lucide-react";
 
 import type { CommentDto, CommentReply } from "@/app/lib/comments";
 import {
@@ -17,7 +17,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-
+import ReportDialog from "../messages/ReportDialog";
+import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { filePublicUrl } from "@/lib/utils";
 type CommentListProps = {
   lessonId: number;
   teacherIds?: number[];
@@ -65,6 +68,7 @@ export default function CommentList({
   const [offset, setOffset] = useState(0);
   const [repliesOffsets, setRepliesOffsets] = useState<Record<number, number>>({});
   const [totalComments, setTotalComments] = useState(0);
+  const [reportComment, setReportComment] = useState<CommentDto | CommentReply | null>(null);
 
   const canModerate = (userId: number) =>
     currentUserId === userId ||
@@ -74,6 +78,7 @@ export default function CommentList({
   const fetchComments = async (signal?: AbortSignal) => {
     setError(null);
     const params = new URLSearchParams({ lessonId: String(lessonId) });
+    params.set("limit", "50");
     params.set("offset", String(offset));
     if (parentId != null) params.set("parentId", String(parentId));
 
@@ -179,6 +184,7 @@ export default function CommentList({
               ? {
                   ...comment,
                   replies: [...(comment.replies ?? []), data as CommentReply],
+                  repliesCount: (comment.repliesCount ?? 0) + 1,
                 }
               : comment,
           ),
@@ -279,7 +285,14 @@ export default function CommentList({
     return (
       <Item key={comment.id} className={options.isReply ? "ml-8 border-l border-l-gray-200 pl-4 w-[calc(100%_-_var(--spacing)_*_8)]" : undefined}>
         <ItemMedia variant="icon">
-          <UserCircle className="h-10 w-10" />
+          {comment.user.avatarFile?.url ? (
+            <Avatar className="size-10">
+              <AvatarImage src={filePublicUrl(comment.user.avatarFile.url)} alt={comment.user.name} />
+              <AvatarFallback>{comment.user.name.charAt(0)}</AvatarFallback>
+            </Avatar>
+          ) : (
+            <UserCircle className="h-10 w-10" />
+          )}
         </ItemMedia>
         <ItemContent>
           <ItemTitle>
@@ -360,7 +373,21 @@ export default function CommentList({
               <PencilIcon className="h-4 w-4" />
             </Button>
           )}
+          <Tooltip>
+            <TooltipTrigger render={
+              <Button variant="ghost" size="icon" aria-label="Пожаловаться" onClick={() => {
+                setReportComment(comment);
+              }}>
+                <Flag className="h-4 w-4" />
+              </Button>
+            } />
+            <TooltipContent>
+              Пожаловаться на комментарий
+            </TooltipContent>
+          </Tooltip>
           {canModerate(comment.userId) && !isEditing && (
+            <Tooltip>
+              <TooltipTrigger render={
             <Button
               variant="ghost"
               size="icon"
@@ -370,6 +397,11 @@ export default function CommentList({
             >
               <TrashIcon className="h-4 w-4" />
             </Button>
+            } />
+            <TooltipContent>
+              Удалить комментарий
+            </TooltipContent>
+          </Tooltip>
           )}
         </ItemActions>
 
@@ -420,6 +452,7 @@ export default function CommentList({
 
   return (
     <div className="space-y-4">
+      <ReportDialog type="comment" isOpen={reportComment != null} onOpenChange={() => setReportComment(null)} commentId={reportComment?.id} lessonId={lessonId} userId={reportComment?.userId} />
       <hr className="mt-8 mb-4" />
       <h2 className="text-lg font-bold">Комментарии</h2>
       {error && (

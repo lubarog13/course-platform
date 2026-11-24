@@ -31,6 +31,7 @@ import {
   useMessageScroller,
 } from "../ui/message-scroller";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuTrigger } from "../ui/context-menu";
+import MarkdownContent from "../base/MarkdownContent";
 import {
   Dialog,
   DialogContent,
@@ -577,7 +578,16 @@ export default function MessagesChat({
                               >
                                 <div className="flex flex-col gap-1">
                                   {message.content && (
-                                    <p className={cn("text-sm", message.deletedByReceiverAt || message.deletedBySenderAt ? "text-muted-foreground" : "")}>{message.content}</p>
+                                    <MarkdownContent
+                                      compact
+                                      nodes={message.content}
+                                      className={cn(
+                                        message.deletedByReceiverAt ||
+                                          message.deletedBySenderAt
+                                          ? "text-muted-foreground opacity-80"
+                                          : "",
+                                      )}
+                                    />
                                   )}
                                   {message.attachments.length > 0 && (
                                     <div className="flex flex-wrap gap-1">

@@ -31,6 +31,7 @@ export type UpdateUserParams = {
   acceptEmailNotifications: boolean;
   acceptEmailPromotions: boolean;
   signatureId: number | null;
+  avatarFileId: number | null;
 };
 
 export type AgreementParams = {
@@ -189,6 +190,7 @@ export async function updateUserAction(params: UpdateUserParams): Promise<{ ok: 
       userDetails: params.userDetails,
       role: params.role,
       signatureId: params.signatureId,
+      avatarFileId: params.avatarFileId,
     };
     const user = await prisma.user.update({
       where: { id: params.id },

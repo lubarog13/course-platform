@@ -36,7 +36,9 @@ export function UserProfile() {
             }
             return res.json();})
         .then(data => setUser(data))
-        .catch(err => setError(err.message))
+        .catch(err => {
+            if (signal.aborted) return;
+            setError(err.message)})
         .finally(() => {
             if (!signal.aborted) setIsLoading(false);
         });

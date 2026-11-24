@@ -154,11 +154,16 @@ export async function DELETE(request: NextRequest) {
                     id: true,
                 }
             },
+            userAvatars: {
+                select: {
+                    id: true,
+                }
+            },
         }
         
     });
     for (const file of files) {
-        if (file.certificates.length === 0 && file.messageAttachments.length === 0 && file.courseCovers.length === 0 && file.userSignatures.length === 0 && file.attachments.length === 0 && file.userTestAnswers.length === 0) {
+        if (file.certificates.length === 0 && file.messageAttachments.length === 0 && file.courseCovers.length === 0 && file.userSignatures.length === 0 && file.attachments.length === 0 && file.userTestAnswers.length === 0 && file.userAvatars.length === 0) {
             await fs.unlink(file.url);
             await prisma.file.delete({
                 where: {

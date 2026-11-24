@@ -9,13 +9,12 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { Role } from "@prisma/client";
 import CourseLinkCard from "../courses/CourseLinkCard";
-
+import { filePublicUrl } from "@/lib/utils";
 const ROLE_LABELS: Record<Role, string> = {
   student: "Студент",
   teacher: "Преподаватель",
   admin: "Администратор",
 };
-
 function CourseSection({
   title,
   icon,
@@ -66,7 +65,12 @@ export function PublicUserProfile({
   return (
     <div className="mx-auto w-full max-w-6xl flex-1 px-4 py-8">
       <div className="flex flex-col gap-6 border-b border-border pb-8 sm:flex-row sm:items-start sm:justify-between">
-        <div className="min-w-0">
+        <div className="relative">
+        {user.avatarUrl ? (
+          <img src={filePublicUrl(user.avatarUrl) || ''} alt="Аватар" className="sm:absolute top-0 left-0 w-auto h-full object-cover rounded-lg max-w-45 mb-4 sm:mb-0" />
+        ) : null}
+        
+        <div className={cn("min-w-0", user.avatarUrl ? "sm:ml-50" : "")}>
           <div className="mb-3 flex flex-wrap items-center gap-2">
             <Badge variant="outline">{ROLE_LABELS[user.role]}</Badge>
           </div>
@@ -83,7 +87,7 @@ export function PublicUserProfile({
               </div>
             ) : null}
         </div>
-
+        </div>
         <div className="flex flex-wrap gap-2">
           {isOwn ? (
             <Link

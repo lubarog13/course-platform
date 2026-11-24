@@ -99,6 +99,7 @@ model User {
   /// Soft-delete; NULL = активен
   deletedAt        DateTime? @map("deleted_at") @db.Timestamptz
   signatureId      Int?      @map("signature_id")
+  avatarFileId     Int?      @map("avatar_file_id")
   /// Подпись пользователя
 
   uploadedFiles      File[]
@@ -115,7 +116,7 @@ model User {
   notifications      Notification[]
   agreement          Agreement?
   signature        File?     @relation("UserSignature", fields: [signatureId], references: [id])
-
+  avatarFile       File?     @relation("UserAvatar", fields: [avatarFileId], references: [id])
 
   @@map("User")
 }
@@ -137,7 +138,7 @@ model File {
   messageAttachments MessageAttachment[]
   userTestAnswers    UserTestAnswer[]     @relation("UserTestAnswerFile")
   userSignatures     User[]               @relation("UserSignature")
-
+  userAvatars       User[]               @relation("UserAvatar")
   @@map("File")
 }
 

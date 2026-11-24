@@ -22,6 +22,7 @@ import {
 import { cn } from "@/lib/utils";
 import { Badge } from "../ui/badge";
 import {useSearchParams} from "next/navigation";
+import MarkdownContent from "../base/MarkdownContent";
 
 export default function MessagesSidebar({
   userId,
@@ -149,7 +150,7 @@ export default function MessagesSidebar({
       );
     }
     if (dialog.lastMessage?.senderId === userId) {
-      return `(вы) ${dialog.lastMessage?.content || "Нет сообщений"}`;
+      return `(вы) ${dialog.lastMessage?.content?.replace("# ", "") || "Нет сообщений"}`;
     }
     return dialog.lastMessage?.content || "Нет сообщений";
   };
@@ -207,7 +208,14 @@ export default function MessagesSidebar({
               {dialog.peer.patronymic}
             </ItemTitle>
             <ItemDescription className="text-sm text-gray-500">
-              {getDialogDescription(dialog)}
+              {typeof getDialogDescription(dialog) === 'string' ? (
+                <MarkdownContent
+                  compact
+                  nodes={getDialogDescription(dialog) as string}
+                />
+              ) : (
+                getDialogDescription(dialog)
+              )}
             </ItemDescription>
           </ItemContent>
           <ItemActions>

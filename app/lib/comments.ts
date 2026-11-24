@@ -13,6 +13,9 @@ export type CommentUser = {
   name: string;
   surname: string;
   id: number;
+  avatarFile: {
+    url: string | null;
+  } | null;
 };
 
 export type CommentReply = {
@@ -46,6 +49,11 @@ const commentUserSelect = {
   name: true,
   surname: true,
   id: true,
+  avatarFile: {
+    select: {
+      url: true,
+    },
+  },
 } as const;
 
 function parseIntParam(
@@ -54,16 +62,22 @@ function parseIntParam(
   min: number,
   max: number,
 ) {
+  // Number(null) === 0 — treat missing/empty as fallback, not min clamp
+  if (value == null || value === "") return fallback;
   const parsed = Number(value);
   if (!Number.isInteger(parsed)) return fallback;
   return Math.min(max, Math.max(min, parsed));
 }
+
+/** Initial replies embedded with each root comment (independent of root page size). */
+const INITIAL_REPLIES_TAKE = 50;
 
 function serializeUser(user: CommentUser): CommentUser {
   return {
     id: user.id,
     name: user.name,
     surname: user.surname,
+    avatarFile: user.avatarFile,
   };
 }
 
@@ -195,8 +209,7 @@ export async function listComments(
         replies: {
           where: { deletedAt: null },
           orderBy: { createdAt: "asc" },
-          take: limitNum,
-          skip: offsetNum,
+          take: INITIAL_REPLIES_TAKE,
           include: {
             user: { select: commentUserSelect },
           },
@@ -281,18 +294,27 @@ export async function createComment(
     },
     include: {
       user: { select: commentUserSelect },
-      lesson: { select: { coursePart: { select: { course: { select: { slug: true } } } } } },
+      lesson: {
+        select: {
+          coursePart: { select: { course: { select: { slug: true } } } },
+        },
+      },
       replies: {
         where: { deletedAt: null },
         include: { user: { select: commentUserSelect } },
-        _count: {
-          select: { replies: true },
-        },
       },
     },
   });
 
-  return serializeComment({ ...created, repliesCount: created.replies.length ?? 0, lesson: { coursePart: { course: { slug: created.lesson.coursePart.course.slug } } } });
+  return serializeComment({
+    ...created,
+    repliesCount: created.replies.length,
+    lesson: {
+      coursePart: {
+        course: { slug: created.lesson.coursePart.course.slug },
+      },
+    },
+  });
 }
 
 export async function findComment(id: number, repliesLimit: number, repliesOffset: number) {

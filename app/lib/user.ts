@@ -25,6 +25,7 @@ export type PublicUserProfile = {
   name: string;
   surname: string;
   patronymic: string | null;
+  avatarUrl: string | null;
   role: Role;
   userDetails: UserDetails | null;
   taughtCourses: PublicCourseSummary[];
@@ -79,6 +80,7 @@ export async function getPublicUserProfile(
       patronymic: true,
       role: true,
       userDetails: true,
+      avatarFile: { select: { url: true } },
       email: true,
       phone: true,
       instructedCourses: {
@@ -116,6 +118,7 @@ export async function getPublicUserProfile(
     name: user.name,
     surname: user.surname,
     patronymic: user.patronymic,
+    avatarUrl: user.avatarFile?.url ?? null,
     role: user.role,
     userDetails: (user.userDetails as UserDetails | null) ?? null,
     taughtCourses: user.instructedCourses.map((row) => mapCourse(row.course)),

@@ -123,6 +123,7 @@ export type UserDetails = {
 
 export type UserWithAgreement = User & {
   agreement: Agreement;
+  avatarUrl: string | null;
 };
 
 /** Преподаватель курса: запись CourseInstructor + пользователь */

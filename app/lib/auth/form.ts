@@ -1,4 +1,5 @@
 import z, { object, string } from "zod"
+import {File as FileModel} from "@/lib/models"
  
 export const signInSchema = object({
   email: z.string({error: "Email не может быть пустым"}).min(1, "Email не может быть пустым").email("Неверный email"),
@@ -31,6 +32,8 @@ export const signUpSchema = object({
   acceptEmailNotifications: z.boolean().default(false),
   acceptEmailPromotions: z.boolean().default(false),
   signatureId: z.number().nullable(),
+  avatarFileId: z.number().nullable(),
+  avatarUrl: z.string().nullable(),
   userDetails: z.preprocess(
     emptyToNull,
     object({
@@ -61,4 +64,6 @@ export const signUpSchema = object({
 }, {
   path: ["confirmPassword"],
   message: "Пароли не совпадают",
-})
+});
+
+export type SignUpFormValues = z.infer<typeof signUpSchema>;

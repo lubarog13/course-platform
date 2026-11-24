@@ -5,6 +5,7 @@ import {
   asRequiredId,
   asRequiredString,
   requireObject,
+  asOptionalId
 } from "@/app/lib/api";
 import { prisma } from "@/app/lib/prisma";
 import { isCourseStaff } from "./enrollment";
@@ -64,6 +65,17 @@ export type MessageCreateData = {
   receiverId: number;
   content: string;
   attachmentIds?: number[];
+};
+
+export type ReportMessageCreateData = {
+  content: string;
+  item: "review" | "comment" | "lesson" | "course" | "user";
+  userId?: number;
+  reviewId?: number;
+  commentId?: number;
+  lessonId?: number;
+  courseId?: number;
+  reason: string;
 };
 
 export type MessageUpdateData = {
@@ -141,6 +153,43 @@ export function parseMessageUpdateBody(body: unknown): MessageUpdateData {
   }
 
   return data;
+}
+
+export function parseReportMessageCreateBody(body: unknown): ReportMessageCreateData | null {
+  const raw = requireObject(body);
+  const content = asRequiredString(raw.content, "content");
+  const item = asRequiredString(raw.item, "item");
+  const userId = asOptionalId(raw.userId, "userId");
+  const reviewId = asOptionalId(raw.reviewId, "reviewId");
+  const commentId = asOptionalId(raw.commentId, "commentId");
+  const lessonId = asOptionalId(raw.lessonId, "lessonId");
+  const courseId = asOptionalId(raw.courseId, "courseId");
+  const reason = asRequiredString(raw.reason, "reason");
+  if (content.length > 10_000) {
+    throw new Error("Сообщение не может быть длиннее 10000 символов", {
+      cause: "invalid",
+    });
+  }
+  if (reason.length > 1000) {
+    throw new Error("Причина не может быть длиннее 1000 символов", {
+      cause: "invalid",
+    });
+  }
+  if (item !== "review" && item !== "comment" && item !== "lesson" && item !== "course" && item !== "user") {
+    throw new Error("Неизвестный тип жалобы", {
+      cause: "invalid",
+    });
+  }
+  return {
+    content,
+    item,
+    userId: userId ?? undefined,
+    reviewId: reviewId ?? undefined,
+    commentId: commentId ?? undefined,
+    lessonId: lessonId ?? undefined,
+    courseId: courseId ?? undefined,
+    reason,
+  };
 }
 
 function serializeMessage(
@@ -557,6 +606,218 @@ export async function createMessage(senderId: number, data: MessageCreateData) {
   });
 
   return serializeMessage(message, senderId);
+}
+
+export async function createReportMessage(senderId: number, data: ReportMessageCreateData) {
+  const receivers = await prisma.user.findMany({
+    where: {
+      role: 'admin',
+    },
+    select: {
+      id: true,
+    },
+  });
+  if (!receivers.length) {
+    throw new Error("Администраторы не найдены", { cause: "not_found" });
+  }
+  const getUser = async (id?: number) => {
+    if (!id) {
+      return null;
+    }
+    const user = await prisma.user.findFirst({
+      where: { id },
+      select: {
+        name: true,
+        surname: true,
+        patronymic: true,
+      },
+    });
+    return user;
+  }
+  const getLesson = async (id?: number) => {
+    if (!id) {
+      return null;
+    }
+    const lesson = await prisma.lesson.findFirst({
+    where: { id },
+    include: {
+      coursePart: {
+        include: {
+          course: {
+            select: {
+              name: true,
+              slug: true,
+            },
+          },
+        },
+      },
+    }
+  });
+  return lesson;
+  }
+
+  const getCourse = async (id?: number) => {
+    if (!id) {
+      return null;
+    }
+    const course = await prisma.course.findFirst({
+      where: { id },
+      select: {
+        name: true,
+        slug: true,
+      },
+    });
+    return course;
+  }
+  const getReview = async (id?: number) => {
+    if (!id) {
+      return null;
+    }
+    const review = await prisma.courseReview.findFirst({
+      where: { id },
+      select: {
+        comment: true,
+      },
+    });
+    return review;
+  }
+  const getComment = async (id?: number) => {
+    if (!id) {
+      return null;
+    }
+    const comment = await prisma.lessonComment.findFirst({
+      where: { id },
+      select: {
+        content: true,
+      },
+    });
+    return comment;
+  }
+  let content = '';
+  const user = await getUser(data.userId);
+  const lesson = await getLesson(data.lessonId);
+  const course = await getCourse(data.courseId);
+  switch (data.item) {
+    case 'review':
+      if (!data.reviewId) {
+        throw new Error("Отсутствует ID отзыва", { cause: "invalid" });
+      }
+      if (!data.courseId) {
+        throw new Error("Отсутствует ID курса", { cause: "invalid" });
+      }
+      if (!user) {
+        throw new Error("Пользователь не найден", { cause: "not_found" });
+      }
+      const review = await getReview(data.reviewId);
+      if (!review) {
+        throw new Error("Отзыв не найден", { cause: "not_found" });
+      }
+      if (!course) {
+        throw new Error("Курс не найден", { cause: "not_found" });
+      }
+      content = [
+        `# Жалоба на отзыв`,
+        `Пользователь **${user.surname} ${user.name}${user.patronymic ? ` ${user.patronymic}` : ""}**`,
+        `Курс: [${course.name}](/course/${course.slug})`,
+        `## Причина`,
+        data.reason,
+        `## Отзыв`,
+        review.comment ?? "—",
+        `## Текст жалобы`,
+        data.content,
+      ].join("\n\n");
+      break;
+    case 'comment':
+      if (!data.commentId) {
+        throw new Error("Отсутствует ID комментария", { cause: "invalid" });
+      }
+      if (!data.lessonId) {
+        throw new Error("Отсутствует ID урока", { cause: "invalid" });
+      }
+      if (!user) {
+        throw new Error("Пользователь не найден", { cause: "not_found" });
+      }
+      const comment = await getComment(data.commentId);
+      if (!comment) {
+        throw new Error("Комментарий не найден", { cause: "not_found" });
+      }
+      if (!lesson) {
+        throw new Error("Урок не найден", { cause: "not_found" });
+      }
+      content = [
+        `# Жалоба на комментарий`,
+        `Пользователь **${user.surname} ${user.name}${user.patronymic ? ` ${user.patronymic}` : ""}**`,
+        `Урок: [${lesson.name}](/course/${lesson.coursePart.course.slug}/learn?lessonId=${lesson.id})`,
+        `Курс: [${lesson.coursePart.course.name}](/course/${lesson.coursePart.course.slug})`,
+        `## Причина`,
+        data.reason,
+        `## Комментарий`,
+        comment.content,
+        `## Текст жалобы`,
+        data.content,
+      ].join("\n\n");
+      break;
+    case 'lesson':
+      if (!data.lessonId) {
+        throw new Error("Отсутствует ID урока", { cause: "invalid" });
+      }
+      if (!lesson) {
+        throw new Error("Урок не найден", { cause: "not_found" });
+      }
+      content = [
+        `# Жалоба на урок`,
+        `Урок: [${lesson.name}](/course/${lesson.coursePart.course.slug}/learn?lessonId=${lesson.id})`,
+        `Курс: [${lesson.coursePart.course.name}](/course/${lesson.coursePart.course.slug})`,
+        `## Причина`,
+        data.reason,
+        `## Текст жалобы`,
+        data.content,
+      ].join("\n\n");
+      break;
+    case 'course':
+      if (!data.courseId) {
+        throw new Error("Отсутствует ID курса", { cause: "invalid" });
+      }
+      if (!course) {
+        throw new Error("Курс не найден", { cause: "not_found" });
+      }
+      content = [
+        `# Жалоба на курс`,
+        `Курс: [${course.name}](/course/${course.slug})`,
+        `## Причина`,
+        data.reason,
+        `## Текст жалобы`,
+        data.content,
+      ].join("\n\n");
+      break;
+    case 'user':
+      if (!user) {
+        throw new Error("Пользователь не найден", { cause: "not_found" });
+      }
+      content = [
+        `# Жалоба на пользователя`,
+        `**${user.surname} ${user.name}${user.patronymic ? ` ${user.patronymic}` : ""}**`,
+        `## Причина`,
+        data.reason,
+        `## Текст жалобы`,
+        data.content,
+      ].join("\n\n");
+      break;
+    default:
+      throw new Error("Неизвестный тип жалобы", { cause: "invalid" });
+    }
+  const result: Message[] = [];
+  for (const receiver of receivers) {
+    const message = await prisma.message.create({
+      data: {
+        senderId,
+        receiverId: receiver.id,
+        content,
+      },
+    });
+    result.push(message);
+  }
+  return result;
 }
 
 export async function findMessageForActor(messageId: number, actorId: number) {

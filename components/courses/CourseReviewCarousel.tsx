@@ -13,6 +13,7 @@ import { useState } from "react";
 import { Dialog, DialogContent } from "../ui/dialog";
 import { useSession } from "next-auth/react";
 import { Skeleton } from "skullet/react";
+import ReportDialog from "../messages/ReportDialog";
 
 const SAMPLE_REVIEWS: ReviewDto[] = [
   { ...SAMPLE_REVIEW, id: -1 },
@@ -30,8 +31,8 @@ export function CourseReviewCarousel({
   const [modalItem, setModalItem] = useState<ReviewDto | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const { data: session } = useSession();
-
+  const { data: session } = useSession(); 
+  const [reportItem, setReportItem] = useState<ReviewDto | null>(null);
   const canDelete =
     modalItem != null &&
     (session?.user?.role === "admin" ||
@@ -93,6 +94,7 @@ export function CourseReviewCarousel({
                       modal={false}
                       canDelete={false}
                       onClick={() => setModalItem(review)}
+                      setReportOpen={() => setReportItem(review)}
                     />
                   </div>
                 </CarouselItem>
@@ -121,6 +123,7 @@ export function CourseReviewCarousel({
               onClick={() => {
                 void handleDelete();
               }}
+              setReportOpen={() => setReportItem(modalItem)}
             />
             {deleting && (
               <p className="text-sm text-muted-foreground">Удаление…</p>
@@ -133,6 +136,7 @@ export function CourseReviewCarousel({
           </DialogContent>
         </Dialog>
       )}
+        <ReportDialog reviewId={reportItem?.id} courseId={reportItem?.courseId} type="review" isOpen={reportItem !== null} onOpenChange={() => setReportItem(null)} />
     </>
   );
 }
