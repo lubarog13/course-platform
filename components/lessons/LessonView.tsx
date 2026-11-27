@@ -10,7 +10,6 @@ import TestView from "./TestView";
 import AttemptsList from "./AttemtsList";
 import VideoView from "./VideoView";
 import NotFound from "../layout/not-found";
-import Loading from "../layout/loading";
 import { useRouter } from "next/navigation";
 import type { UserLesson } from "@prisma/client";
 import CommentList from "../comments/CommentList";
@@ -20,6 +19,39 @@ import { cn } from "@/lib/utils";
 import DeadlineBanner from "./DeadlineBanner";
 import ReportDialog from "../messages/ReportDialog";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/tooltip";
+import { Skeleton } from "../ui/skeleton";
+
+export function LessonViewSkeleton() {
+  return (
+    <div className="flex flex-col gap-4 max-w-7xl mx-auto sm:px-4 pt-8 min-h-screen relative">
+      <div className="flex lg:flex-nowrap flex-wrap justify-between gap-4 border-b border-gray-200 dark:border-gray-800 pb-4">
+        <div className="flex items-center gap-2 h-10">
+          <Skeleton className="rounded-full h-10 w-10 shrink-0" />
+          <Skeleton className="hidden sm:block h-4 w-32" />
+        </div>
+        <div className="flex items-center gap-2 h-10 lg:order-last ml-auto">
+          <Skeleton className="hidden sm:block h-4 w-32" />
+          <Skeleton className="rounded-full h-10 w-10 shrink-0" />
+        </div>
+        <div className="flex justify-center items-center w-full lg:flex-1 lg:w-auto order-first lg:order-none">
+          <Skeleton className="h-8 w-48 sm:w-72" />
+        </div>
+      </div>
+      <div className="flex-1 p-6 relative space-y-4">
+        <Skeleton className="h-4 w-full max-w-xl" />
+        <Skeleton className="h-4 w-3/4 max-w-lg" />
+        <Skeleton className="h-4 w-5/6 max-w-2xl" />
+        <Skeleton className="mt-6 h-64 w-full rounded-lg" />
+        <div className="space-y-3 pt-4">
+          <Skeleton className="h-4 w-full" />
+          <Skeleton className="h-4 w-[92%]" />
+          <Skeleton className="h-4 w-[88%]" />
+          <Skeleton className="h-4 w-[70%]" />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 type LessonViewProps = {
   courseId: number;
@@ -267,7 +299,7 @@ export default function LessonView({
     return <NotFound text="Урок не найден" showHomeButton={false} />;
   }
   if (loading || !lesson) {
-    return <Loading text="Загрузка урока..." />;
+    return <LessonViewSkeleton />;
   }
   if (error && !loading) {
     return <div>Ошибка: {error}</div>;

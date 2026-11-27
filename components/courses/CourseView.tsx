@@ -7,12 +7,44 @@ import CourseSidebar from "./CourseSidebar";
 import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger, DrawerClose } from "../ui/drawer";
 import { MenuIcon, XIcon } from 'lucide-react';
 import { Button } from '../ui/button';
-import LessonView from "../lessons/LessonView";
+import LessonView, { LessonViewSkeleton } from "../lessons/LessonView";
 import {useRouter} from 'next/navigation';
 import NotFound from "../layout/not-found";
-import Loading from '../layout/loading';
 import LessonProgress from "../lessons/LessonProgress";
 import { useSession } from "next-auth/react";
+import { Skeleton } from "../ui/skeleton";
+
+function CourseViewSkeleton() {
+  return (
+    <div className="flex flex-col lg:flex-row max-w-7xl align-stretch mx-auto px-4 pt-8 min-h-screen relative">
+      <div className="hidden lg:flex flex-col w-1/4 min-w-[300px] border-r border-gray-200 p-4 pr-6 gap-4">
+        <Skeleton className="h-8 w-48 mb-2" />
+        <div className="flex items-center gap-3">
+          <Skeleton className="size-10 rounded-md shrink-0" />
+          <Skeleton className="h-5 w-36" />
+        </div>
+        {Array.from({ length: 3 }, (_, i) => (
+          <div key={i} className="flex flex-col gap-3 mt-2">
+            <Skeleton className="h-5 w-40" />
+            <Skeleton className="h-3 w-28" />
+            <div className="flex flex-col gap-2 pl-1">
+              <Skeleton className="h-10 w-full rounded-md" />
+              <Skeleton className="h-10 w-full rounded-md" />
+              <Skeleton className="h-10 w-[85%] rounded-md" />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="flex lg:hidden gap-3 items-center mb-4">
+        <Skeleton className="w-10 h-10 rounded-full" />
+        <Skeleton className="h-6 w-32" />
+      </div>
+      <div className="flex-1">
+        <LessonViewSkeleton />
+      </div>
+    </div>
+  );
+}
 
 export default function CourseView() {
     const params = useParams();
@@ -134,7 +166,7 @@ export default function CourseView() {
         return <NotFound text="Курс не найден" />;
     }
 
-    if (loading) return <Loading text="Загрузка курса..." />;
+    if (loading) return <CourseViewSkeleton />;
     if (error) return <div className="flex flex-col items-center justify-center h-full min-h-screen container mx-auto px-4 pt-8 relative">Ошибка: {error}</div>;
     if (lessonsList.length === 0 && (user?.role === "student" || !user)) {
         return <div className="flex flex-col items-center justify-center h-full min-h-screen container mx-auto px-4 pt-8 relative">В курсе пока нет уроков</div>;

@@ -57,7 +57,7 @@ export function CourseCard({
 
   return (
     <Card
-      className="relative mx-auto w-full max-w-sm pt-0 cursor-pointer"
+      className="h-full relative mx-auto w-full max-w-sm pt-0 cursor-pointer"
       onClick={() => goToCourse(true)}
     >
       <div className="pointer-events-none absolute inset-x-0 top-0 z-30 aspect-video dark:bg-black/35" />

@@ -6,7 +6,7 @@ import type { PublicCourseSummary, PublicUserProfile as PublicUserProfileData } 
 import { CourseLevelValues } from "@/app/lib/models";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { cn, getFio } from "@/lib/utils";
 import type { Role } from "@prisma/client";
 import CourseLinkCard from "../courses/CourseLinkCard";
 import { filePublicUrl } from "@/lib/utils";
@@ -16,18 +16,20 @@ const ROLE_LABELS: Record<Role, string> = {
   admin: "Администратор",
 };
 function CourseSection({
+  id,
   title,
   icon,
   courses,
   emptyText,
 }: {
+  id: string;
   title: string;
   icon: ReactNode;
   courses: PublicCourseSummary[];
   emptyText: string;
 }) {
   return (
-    <section className="mt-10">
+    <section id={id} className="mt-10">
       <div className="mb-4 flex items-center gap-2">
         {icon}
         <h2 className="text-xl font-semibold tracking-tight">{title}</h2>
@@ -55,9 +57,7 @@ export function PublicUserProfile({
   isOwn: boolean;
   isLoggedIn: boolean;
 }) {
-  const fullName = [user.name, user.patronymic, user.surname]
-    .filter(Boolean)
-    .join(" ");
+  const fullName = getFio(user.surname, user.name, user.patronymic);
   const position = user.userDetails?.position;
   const achievements = user.userDetails?.achievements?.filter(Boolean) ?? [];
   const showTaught = user.role === "teacher" || user.taughtCourses.length > 0;
@@ -126,6 +126,7 @@ export function PublicUserProfile({
 
       {showTaught ? (
         <CourseSection
+          id="taught-courses"
           title="Преподаёт курсы"
           icon={<GraduationCap className="size-5 text-muted-foreground" />}
           courses={user.taughtCourses}
@@ -134,6 +135,7 @@ export function PublicUserProfile({
       ) : null}
 
       <CourseSection
+        id="completed-courses"
         title="Прошёл курсы"
         icon={<BookOpen className="size-5 text-muted-foreground" />}
         courses={user.completedCourses}

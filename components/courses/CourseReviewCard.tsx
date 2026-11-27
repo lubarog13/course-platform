@@ -32,12 +32,14 @@ export const CourseReviewCard = ({
   canDelete,
   onClick,
   setReportOpen,
+  hideReport = false,
 }: {
   review: ReviewDto;
   modal: boolean;
   canDelete: boolean;
   onClick: () => void;
   setReportOpen: () => void;
+  hideReport?: boolean;
 }) => {
   return (
     <>
@@ -82,24 +84,27 @@ export const CourseReviewCard = ({
             <p className="text-sm text-muted-foreground">
               {review.rating} из 5
             </p>
-            <Tooltip>
-              <TooltipTrigger render={<Button
-              variant="outline"
-              size="icon"
-              className="ml-auto"
-              type="button"
-              onClick={(event) => {
-                event.stopPropagation();
-                setReportOpen();
-              }}
-            >
-              <FlagIcon className="w-10 h-10" />
-            </Button>
-            } />
-            <TooltipContent>
-              Пожаловаться на отзыв
-            </TooltipContent>
-            </Tooltip>
+            {!hideReport && (
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="ml-auto"
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setReportOpen();
+                      }}
+                    >
+                      <FlagIcon className="w-10 h-10" />
+                    </Button>
+                  }
+                />
+                <TooltipContent>Пожаловаться на отзыв</TooltipContent>
+              </Tooltip>
+            )}
           </div>
           {canDelete && (
             <Button

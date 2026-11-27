@@ -12,7 +12,7 @@ import { readdirSync } from "node:fs";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { auth } from "@/auth";
-import { CourseLevel, type Instructor } from "@/app/lib/models";
+import { CourseLevel, UserDetails, type Instructor } from "@/app/lib/models";
 import { prisma } from "@/app/lib/prisma";
 import { CoursePartEditData } from "@/app/lib/courseParts";
 
@@ -334,6 +334,24 @@ export async function listCourses(query: CourseListQuery) {
 
 export type CourseListResponse = Awaited<ReturnType<typeof listCourses>>;
 
+export type Teacher = Instructor & {
+  course: {
+    name: string;
+    slug: string;
+  };
+  courses: {name: string, slug: string}[] | null;
+  user: User & {
+    avatarFile: {
+      id: number;
+      url: string;
+    } | null;
+    userDetails: UserDetails | null;
+  };
+};
+export type TeachersListResponse = {
+  items: Teacher[];
+};
+
 const HOME_COURSES_LIMIT = 10;
 
 const homeCoursesWhere = {
@@ -406,9 +424,120 @@ export async function getRecommendedCourses(
   return toHomeCourseList(rows, limit);
 }
 
+
+export async function getBestTeachers(
+  bestCourses: CourseListResponse,
+  limit = 5,
+): Promise<TeachersListResponse> {
+  const teachersInclude = {
+    user: {
+      include: {
+        avatarFile: {
+          select: {
+            id: true,
+            url: true,
+          },
+        },
+      },
+    },
+    course: {
+      select: {
+        name: true,
+        slug: true,
+      },
+    },
+  } as const;
+  const courseIds = bestCourses.items.map((course) => course.id);
+  let teachers = await prisma.courseInstructor.findMany({
+    where: {
+      courseId: { in: courseIds },
+      user: {
+        // Пустой объект {} пишется при регистрации; null тоже отсекается.
+        userDetails: { not: {} },
+      },
+    },
+    include: teachersInclude,
+    take: limit,
+  });
+  let resultTeachers: Teacher[] = [];
+  for (const teacher of teachers) {
+    const existingIndex = resultTeachers.findIndex((t) => t.user.id === teacher.user.id);
+    if (existingIndex !== -1) {
+      resultTeachers[existingIndex].courses?.push(teacher.course);
+      continue;
+    } else {
+      resultTeachers.push({
+        ...teacher,
+        courses: [{ name: teacher.course.name, slug: teacher.course.slug }],
+      });
+    }
+  }
+
+  if (resultTeachers.length < limit) {
+    const moreTeachers = await prisma.courseInstructor.findMany({
+      where: {
+        courseId: { notIn: courseIds },
+        user: {
+          userDetails: { not: {} },
+        },
+      },
+      include: teachersInclude,
+    });
+    teachers = [...resultTeachers, ...moreTeachers];
+    resultTeachers = [];
+    for (const teacher of teachers) {
+      const existingIndex = resultTeachers.findIndex((t) => t.user.id === teacher.user.id);
+      if (existingIndex !== -1) {
+        resultTeachers[existingIndex].courses?.push(teacher.course);
+        continue;
+      } else {
+        resultTeachers.push({
+          ...teacher,
+          courses: [{ name: teacher.course.name, slug: teacher.course.slug }],
+        });
+      }
+    }
+  }
+  
+  return { items: resultTeachers };
+}
+
 export type CategoryWithCount = Category & {
   coursesCount: number;
 };
+
+export type PlatformStats = {
+  courses: number;
+  teachers: number;
+  students: number;
+  certificates: number;
+};
+
+/** Сводные цифры платформы для главной. */
+export async function getPlatformStats(): Promise<PlatformStats> {
+  const [courses, teachers, students, certificates] = await Promise.all([
+    prisma.course.count({
+      where: { publishedAt: { not: null }, deletedAt: null },
+    }),
+    prisma.user.count({
+      where: {
+        deletedAt: null,
+        instructedCourses: { some: {} },
+      },
+    }),
+    prisma.user.count({
+      where: {
+        deletedAt: null,
+        enrollments: { some: {} },
+      },
+    }),
+    prisma.certificate.count({
+      where: { revokedAt: null },
+    }),
+  ]);
+
+  return { courses, teachers, students, certificates };
+}
 
 export async function getCategories(): Promise<CategoryWithCount[]> {
   const categories = await prisma.category.findMany({

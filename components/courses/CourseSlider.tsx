@@ -49,7 +49,7 @@ export default function CourseSlider({ courses, isLoading }: CourseSliderProps) 
             align: "start",
         }}
     >
-        <CarouselContent className="py-3">
+        <CarouselContent className="py-3 px-3">
         {courseItems.map((course) => (
             <CarouselItem key={course.id} className="basis-full md:basis-1/2 lg:basis-1/3">
                 <CourseCard course={course} updateFilters={updateFiltersFromCard} />

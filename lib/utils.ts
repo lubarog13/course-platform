@@ -12,7 +12,7 @@ export function declOfNum(val: number, variants: string[]) {
   return variants[ (val % 100 > 4 && val % 100 < 20) ? 2 : cases[(val % 10 < 5) ? val % 10 : 5] ]
 }
 
-export function getFio(surname: string, name: string, patronymic?: string) {
+export function getFio(surname: string | null, name: string | null, patronymic?: string | null) {
   return `${surname} ${name} ${patronymic ? patronymic : ''}`.trim();
 }
 

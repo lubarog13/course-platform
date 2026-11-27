@@ -83,6 +83,24 @@ export async function listCourseReviews(
   });
 }
 
+/** Последние отзывы по всей платформе для главной. */
+export async function getRecentReviews(
+  limit = 9,
+): Promise<ReviewDto[]> {
+  const take = Math.min(Math.max(1, limit), REVIEW_LIST_LIMIT);
+  return prisma.courseReview.findMany({
+    where: {
+      comment: { not: null },
+      course: { deletedAt: null, publishedAt: { not: null } },
+    },
+    orderBy: { createdAt: "desc" },
+    take,
+    include: {
+      user: { select: reviewUserSelect },
+    },
+  });
+}
+
 export async function saveCourseReview(
   userId: number,
   data: ReviewCreateData,
